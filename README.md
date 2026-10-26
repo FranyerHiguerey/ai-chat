@@ -12,7 +12,7 @@ OpenAI.
 - **Editable without code**: a site's own dashboard or CMS can feed settings, knowledge and catalog through a source.
 - **Works anywhere**: a web-standard `Request => Response` handler (Astro, Next.js, Hono, serverless), a zero-dependency `<ai-chat>` Web Component, and a React wrapper. Spanish and English.
 
-> **Status:** v0.1.0, pre-1.0, so the API can still change. Not on npm yet: install from the [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) (below).
+> **Status:** v0.1.1, pre-1.0, so the API can still change. Not on npm yet: install from the [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) (below).
 
 ## Packages
 
@@ -26,29 +26,19 @@ OpenAI.
 
 ## Install (from the GitHub release)
 
-Until the npm release, point each package at its release tarball, and override the
-packages' references to each other, which would otherwise be looked up on npm:
+Until the npm release, add the packages you use straight from the release, plus your provider's SDK:
 
-```jsonc
-// package.json
+```json
 {
   "dependencies": {
-    "@franyerhiguerey/ai-chat-core": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.0/franyerhiguerey-ai-chat-core-0.1.0.tgz",
-    "@franyerhiguerey/ai-chat-widget": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.0/franyerhiguerey-ai-chat-widget-0.1.0.tgz",
-    "openai": "^7.43.0", // or "@anthropic-ai/sdk": "^1.3.0"
-  },
+    "@franyerhiguerey/ai-chat-core": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.1/franyerhiguerey-ai-chat-core-0.1.1.tgz",
+    "@franyerhiguerey/ai-chat-widget": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.1/franyerhiguerey-ai-chat-widget-0.1.1.tgz",
+    "openai": "^7.43.0"
+  }
 }
 ```
 
-```yaml
-# pnpm-workspace.yaml (pnpm 10+; pnpm ignores "pnpm.overrides" in package.json)
-overrides:
-  '@franyerhiguerey/ai-chat-core': https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.0/franyerhiguerey-ai-chat-core-0.1.0.tgz
-  '@franyerhiguerey/ai-chat-client': https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.0/franyerhiguerey-ai-chat-client-0.1.0.tgz
-  '@franyerhiguerey/ai-chat-widget': https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.0/franyerhiguerey-ai-chat-widget-0.1.0.tgz
-```
-
-With npm, put the same map under a top-level `"overrides"` key in `package.json`; with Yarn, under `"resolutions"`. Add `ai-chat-react` and `ai-chat-ingest` the same way if you use them.
+Use `@anthropic-ai/sdk` instead of `openai` for Claude. Add `ai-chat-react`, `ai-chat-client` or `ai-chat-ingest` the same way if you use them. The packages refer to each other only as peer dependencies, so nothing else is fetched and no overrides are needed. That matters for pnpm 11, which blocks URL sub-dependencies by default. The React wrapper needs the widget installed too.
 
 ## Quick start
 

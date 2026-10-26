@@ -1,6 +1,6 @@
 {
   "name": "@franyerhiguerey/ai-chat-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React wrapper for the <ai-chat> widget",
   "keywords": [
     "chatbot",
@@ -38,13 +38,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@franyerhiguerey/ai-chat-widget": "workspace:^"
-  },
   "peerDependencies": {
+    "@franyerhiguerey/ai-chat-widget": "workspace:^",
     "react": ">=18"
   },
   "devDependencies": {
+    "@franyerhiguerey/ai-chat-widget": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

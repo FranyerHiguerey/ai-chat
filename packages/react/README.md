@@ -1,6 +1,6 @@
 # @franyerhiguerey/ai-chat-react
 
-A React wrapper for the [`<ai-chat>` widget](../widget). React 18 or newer.
+A React wrapper for the [`<ai-chat>` widget](../widget). React 18 or newer. Install the widget next to it: it's a peer dependency, so your app controls its version.
 
 ```tsx
 import { AiChat } from '@franyerhiguerey/ai-chat-react';

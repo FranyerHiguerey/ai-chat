@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 (2026-10-26)
+
+- **Fix:** installing from the GitHub release with pnpm 11 failed, because pnpm blocks sub-dependencies that resolve to URLs. `ai-chat-react` now takes the widget as a peer dependency, so installs need no overrides. Install the widget next to the React wrapper.
+
 ## 0.1.0 (2026-10-26)
 
 First public release. Installable from the GitHub release; not on npm yet.
