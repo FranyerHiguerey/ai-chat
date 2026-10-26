@@ -24,19 +24,27 @@ Accept: text/event-stream
 - `messages`: the whole conversation as plain text. It starts and ends with `user` and alternates roles. The server is stateless, so the client keeps the history and sends it every turn.
 - `lang` (optional, `"es"` or `"en"`): the UI language. Fixed replies and error messages use it. The model replies in whatever language the visitor writes in. An unsupported value falls back to the site's default language.
 
-Limits come from the site config (`limits`): characters per message (default 2,000) and user turns per conversation (default 20).
+Limits come from the site config (`limits`): characters per message (default 2,000) and per conversation (20,000), user turns per conversation (20), and body size (100 KB).
+
+**Cross-origin use.** The widget normally calls an endpoint on its own site. To embed it on another origin, list that origin in `allowedOrigins`; the endpoint then answers the CORS preflight (`OPTIONS`) and adds `Access-Control-Allow-Origin` to every response for that origin.
 
 ## Errors before the stream opens
 
 Rejected requests never reach the model, so they cost nothing. They return JSON, not a stream:
 
-| Status | `error.code`         | Meaning                                                                    |
-| ------ | -------------------- | -------------------------------------------------------------------------- |
-| 400    | `invalid_request`    | Not JSON, wrong shape, roles don't alternate, or an empty message          |
-| 400    | `message_too_long`   | A message is over `limits.maxMessageChars`                                 |
-| 400    | `too_many_turns`     | More than `limits.maxTurns` user turns: start a new conversation           |
-| 405    | `method_not_allowed` | Not a POST                                                                 |
-| 500    | `internal`           | The server is misconfigured (for example, the knowledge folder is missing) |
+| Status | `error.code`         | Meaning                                                                                           |
+| ------ | -------------------- | ------------------------------------------------------------------------------------------------- |
+| 400    | `invalid_request`    | Not JSON, wrong shape, roles don't alternate, or an empty message                                 |
+| 400    | `message_too_long`   | A message is over `limits.maxMessageChars`, or all messages together over `maxConversationChars`  |
+| 400    | `too_many_turns`     | More than `limits.maxTurns` user turns: start a new conversation                                  |
+| 403    | `forbidden_origin`   | The page's `Origin` is not the endpoint's own and not in `allowedOrigins`                         |
+| 405    | `method_not_allowed` | Not a POST                                                                                        |
+| 413    | `message_too_long`   | The body is over `limits.maxBodyBytes`                                                            |
+| 429    | `rate_limited`       | Too many requests from this visitor or from everyone. `Retry-After` says how many seconds to wait |
+| 500    | `internal`           | The server is misconfigured (for example, the knowledge folder is missing)                        |
+| 503    | `unavailable`        | The site's daily token budget is spent. New chats work again the next UTC day                     |
+
+`forbidden_origin` and the 400s are final: retrying the same request won't help. `rate_limited` and `unavailable` are temporary.
 
 ```json
 {

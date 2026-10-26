@@ -65,11 +65,20 @@ export const configSchema = z.object({
   limits: z
     .object({
       maxMessageChars: z.number().int().positive().default(2000),
+      /** All messages of a conversation together, assistant replies included. */
+      maxConversationChars: z.number().int().positive().default(20_000),
       maxTurns: z.number().int().positive().default(20),
+      maxBodyBytes: z.number().int().positive().default(100_000),
       rpmPerIp: z.number().int().positive().default(10),
+      /** All visitors together: a ceiling that holds even if IPs are forged. */
+      rpmGlobal: z.number().int().positive().default(60),
+      maxConcurrentPerIp: z.number().int().positive().default(2),
       maxTokens: z.number().int().positive().default(1024),
+      /** Weighted tokens per UTC day across all visitors (see weightedTokens). 0 turns it off. */
+      dailyTokenBudget: z.number().int().nonnegative().default(1_000_000),
     })
     .default({}),
+  /** Sites allowed to embed the chat. Empty: only the endpoint's own origin. */
   allowedOrigins: z.array(z.string().url()).default([]),
 });
 

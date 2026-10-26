@@ -37,6 +37,7 @@ const FINAL_ERRORS = new Set([
   'message_too_long',
   'too_many_turns',
   'method_not_allowed',
+  'forbidden_origin',
 ]);
 
 export const isRetryable = (code: string): boolean => !FINAL_ERRORS.has(code);

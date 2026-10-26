@@ -8,9 +8,14 @@ describe('defineConfig', () => {
     expect(config.languages).toEqual({ supported: ['es', 'en'], default: 'es' });
     expect(config.limits).toEqual({
       maxMessageChars: 2000,
+      maxConversationChars: 20_000,
       maxTurns: 20,
+      maxBodyBytes: 100_000,
       rpmPerIp: 10,
+      rpmGlobal: 60,
+      maxConcurrentPerIp: 2,
       maxTokens: 1024,
+      dailyTokenBudget: 1_000_000,
     });
     expect(config.features).toEqual({});
     expect(config.allowedOrigins).toEqual([]);

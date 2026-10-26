@@ -73,9 +73,11 @@ const port = Number(process.env.PORT ?? 4321);
 serve(
   {
     port,
-    fetch: (request) => {
+    fetch: (request, { incoming }) => {
       const { pathname } = new URL(request.url);
-      if (pathname === '/api/chat') return handleChat(request);
+      if (pathname === '/api/chat') {
+        return handleChat(request, { clientIp: incoming.socket.remoteAddress });
+      }
       if (pathname === '/api/mock-chat' && request.method === 'POST')
         return handleMockChat(request);
       if (request.method === 'GET' && pathname === '/') {

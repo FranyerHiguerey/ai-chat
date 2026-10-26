@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { frame, openStream, reply, sse } from '../test/sse.js';
-import { ChatController, restoreMessages } from './controller.js';
+import { ChatController, isRetryable, restoreMessages } from './controller.js';
 import { memoryStore } from './store.js';
 import { createMessage, textOf } from './types.js';
 
@@ -159,4 +159,15 @@ describe('restoreMessages', () => {
       expect(restoreMessages(value)).toEqual([]);
     },
   );
+});
+
+describe('isRetryable', () => {
+  it('retries passing failures but not rejected requests', () => {
+    for (const code of ['network', 'rate_limited', 'unavailable', 'internal']) {
+      expect(isRetryable(code)).toBe(true);
+    }
+    for (const code of ['forbidden_origin', 'too_many_turns', 'message_too_long']) {
+      expect(isRetryable(code)).toBe(false);
+    }
+  });
 });

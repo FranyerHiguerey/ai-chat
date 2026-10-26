@@ -1,16 +1,39 @@
 import { createChatClient, type ChatClient, type ChatClientOptions } from './client.js';
 import { ProviderError, toStreamErrorCode } from './errors.js';
+import { createBudget, weightedTokens } from './guard/budget.js';
+import { readJsonBody } from './guard/body.js';
+import { resolveClientIp, type RequestContext } from './guard/client-ip.js';
+import { defaultLogger, hashIp, type Logger, type RequestLogEntry } from './guard/log.js';
+import { checkOrigin, corsHeaders } from './guard/origin.js';
+import { createRateLimiter } from './guard/rate-limit.js';
+import { memoryStore, type GuardStore } from './guard/store.js';
 import { stringsFor } from './i18n.js';
 import { PROTOCOL_VERSION, type RequestErrorBody, type RequestErrorCode } from './protocol.js';
 import { parseChatRequest } from './request.js';
 import { encodeComment, encodeEvent } from './sse.js';
+import type { ChatMessage, UsageReport } from './types.js';
 
 export interface ChatHandlerOptions extends ChatClientOptions {
   /** Interval between SSE heartbeat comments. Default 15s. */
   heartbeatMs?: number;
+  /**
+   * Where rate-limit and budget counters live. Defaults to memory, which is
+   * per process: pass a shared store on serverless or multi-instance deploys.
+   */
+  store?: GuardStore;
+  /**
+   * A header set by your proxy or host that carries the visitor's IP, used
+   * when the framework doesn't pass `clientIp`. Only set this behind a proxy
+   * that overwrites it, e.g. `x-forwarded-for` or `cf-connecting-ip`.
+   */
+  trustProxyHeader?: string;
+  /** Receives one entry per request and per failure. Defaults to JSON lines on the console. */
+  logger?: Logger;
 }
 
-export type ChatHandler = (request: Request) => Promise<Response>;
+export type ChatHandler = (request: Request, context?: RequestContext) => Promise<Response>;
+
+export type { RequestContext };
 
 const SSE_HEADERS = {
   'Content-Type': 'text/event-stream; charset=utf-8',
@@ -23,53 +46,154 @@ const SSE_HEADERS = {
 /**
  * A web-standard `Request => Response` chat endpoint. Works as-is in Astro and
  * Next.js routes, serverless functions and Hono; Express needs the adapter.
+ *
+ * Checks run cheapest first and all happen before the model is called, so a
+ * rejected request costs nothing: method, origin, rate limits, body size,
+ * request shape, then the daily budget.
  */
 export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
-  const { config, heartbeatMs = 15_000 } = options;
+  const { config, heartbeatMs = 15_000, trustProxyHeader, logger = defaultLogger } = options;
+  const { limits } = config;
+  const store = options.store ?? memoryStore();
+  const limiter = createRateLimiter({ store, ...limits });
+  const budget = createBudget({ store, dailyTokenBudget: limits.dailyTokenBudget });
 
-  // Built on the first request and reused, so the knowledge is read once.
+  // Built on the first request and reused, so the knowledge is read once. The
+  // request log carries usage, so the client's default usage line is turned off.
   let clientPromise: Promise<ChatClient> | undefined;
   const getClient = () => {
-    clientPromise ??= createChatClient(options).catch((error: unknown) => {
+    clientPromise ??= createChatClient({
+      ...options,
+      onUsage: options.onUsage ?? (() => {}),
+    }).catch((error: unknown) => {
       clientPromise = undefined; // let the next request retry after a fix
       throw error;
     });
     return clientPromise;
   };
 
-  const requestError = (status: number, code: RequestErrorCode, lang?: string, headers = {}) => {
-    const body: RequestErrorBody = {
-      error: { code, message: stringsFor(lang, config).requestErrors[code] },
-    };
-    return Response.json(body, { status, headers });
+  const logError = (stage: string, error: unknown) => {
+    const details =
+      error instanceof ProviderError
+        ? { code: error.code, message: error.message }
+        : { message: error instanceof Error ? error.message : String(error) };
+    logger({ event: 'ai-chat.error', stage, ...details });
   };
 
-  return async (request) => {
-    if (request.method !== 'POST') {
-      return requestError(405, 'method_not_allowed', undefined, { Allow: 'POST' });
+  return async (request, context) => {
+    const startedAt = Date.now();
+    const id = crypto.randomUUID();
+    const origin = checkOrigin(request, config.allowedOrigins);
+    const cors = origin.ok && origin.corsOrigin ? corsHeaders(origin.corsOrigin) : {};
+
+    if (request.method === 'OPTIONS') {
+      return origin.ok
+        ? new Response(null, { status: 204, headers: { Allow: 'POST', ...cors } })
+        : requestError(403, 'forbidden_origin');
     }
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return requestError(400, 'invalid_request');
+    const ip = resolveClientIp(request, context, trustProxyHeader);
+    const entry: RequestLogEntry = {
+      event: 'ai-chat.request',
+      id,
+      outcome: 'rejected',
+      status: 0,
+      code: null,
+      durationMs: 0,
+      ip: hashIp(ip),
+      origin: request.headers.get('origin'),
+      lang: null,
+      finishReason: null,
+      usage: null,
+      weightedTokens: null,
+      budgetUsedToday: null,
+    };
+    const log = (changes: Partial<RequestLogEntry>) => {
+      logger({ ...entry, ...changes, durationMs: Date.now() - startedAt });
+    };
+
+    function requestError(
+      status: number,
+      code: RequestErrorCode,
+      lang?: string,
+      headers: Record<string, string> = {},
+    ) {
+      const body: RequestErrorBody = {
+        error: { code, message: stringsFor(lang, config).requestErrors[code] },
+      };
+      return Response.json(body, { status, headers: { ...headers, ...cors } });
     }
-    const parsed = parseChatRequest(body, config);
-    if (!parsed.ok) return requestError(400, parsed.code, parsed.lang);
-    const { messages, lang } = parsed.value;
+
+    const reject = (
+      status: number,
+      code: RequestErrorCode,
+      lang?: string,
+      headers?: Record<string, string>,
+    ) => {
+      log({ status, code, lang: lang ?? null });
+      return requestError(status, code, lang, headers);
+    };
+
+    if (request.method !== 'POST')
+      return reject(405, 'method_not_allowed', undefined, { Allow: 'POST' });
+    if (!origin.ok) return reject(403, 'forbidden_origin');
+
+    const slot = await limiter.check(ip);
+    if (!slot.ok) {
+      return reject(429, 'rate_limited', undefined, { 'Retry-After': String(slot.retryAfterSec) });
+    }
+
+    // The slot is freed when the reply ends; until the stream takes it over,
+    // every early return must free it here.
+    let streaming = false;
+    try {
+      const body = await readJsonBody(request, limits.maxBodyBytes);
+      if (!body.ok) {
+        return body.reason === 'too_large'
+          ? reject(413, 'message_too_long')
+          : reject(400, 'invalid_request');
+      }
+      const parsed = parseChatRequest(body.value, config);
+      if (!parsed.ok) return reject(400, parsed.code, parsed.lang);
+      const { messages, lang } = parsed.value;
+      entry.lang = lang ?? null;
+
+      if (await budget.exhausted()) {
+        logger({ event: 'ai-chat.error', stage: 'budget', message: 'Daily token budget reached' });
+        return reject(503, 'unavailable', lang);
+      }
+
+      let chat: ChatClient;
+      try {
+        chat = await getClient();
+      } catch (error) {
+        logError('setup', error);
+        log({ outcome: 'error', status: 500, code: 'internal' });
+        return Response.json(
+          { error: { code: 'internal', message: stringsFor(lang, config).streamErrors.internal } },
+          { status: 500, headers: cors },
+        );
+      }
+
+      streaming = true;
+      return streamReply({ request, chat, messages, lang, id, cors, release: slot.release, log });
+    } finally {
+      if (!streaming) slot.release();
+    }
+  };
+
+  function streamReply(reply: {
+    request: Request;
+    chat: ChatClient;
+    messages: ChatMessage[];
+    lang?: string;
+    id: string;
+    cors: Record<string, string>;
+    release: () => void;
+    log: (changes: Partial<RequestLogEntry>) => void;
+  }): Response {
+    const { request, chat, messages, lang, id, release, log } = reply;
     const strings = stringsFor(lang, config);
-
-    let chat: ChatClient;
-    try {
-      chat = await getClient();
-    } catch (error) {
-      logError('setup', error);
-      return Response.json(
-        { error: { code: 'internal', message: strings.streamErrors.internal } },
-        { status: 500 },
-      );
-    }
 
     // One controller for both ways a visitor can leave: the request is aborted
     // (closed tab, network drop) or the response stream is cancelled (Stop).
@@ -80,10 +204,22 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
     const encoder = new TextEncoder();
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let closed = false;
+    let pendingUsage: Promise<Partial<RequestLogEntry>> = Promise.resolve({});
 
     const cleanup = () => {
       clearInterval(heartbeat);
       request.signal.removeEventListener('abort', onRequestAbort);
+      release();
+    };
+
+    const onUsage = (usage: UsageReport) => {
+      pendingUsage = budget
+        .add(usage)
+        .then((budgetUsedToday) => ({
+          usage,
+          weightedTokens: weightedTokens(usage),
+          budgetUsedToday,
+        }));
     };
 
     const stream = new ReadableStream<Uint8Array>({
@@ -92,22 +228,29 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
           if (!closed) controller.enqueue(encoder.encode(chunk));
         };
 
-        send(encodeEvent({ type: 'start', id: crypto.randomUUID(), protocol: PROTOCOL_VERSION }));
+        send(encodeEvent({ type: 'start', id, protocol: PROTOCOL_VERSION }));
         heartbeat = setInterval(() => send(encodeComment('ping')), heartbeatMs);
 
         // Not awaited: start() must return so the first bytes flush right away.
         void (async () => {
+          let result: Partial<RequestLogEntry> = { outcome: 'ok', status: 200 };
           try {
-            for await (const event of chat.stream(messages, { lang, signal: abort.signal })) {
+            for await (const event of chat.stream(messages, {
+              lang,
+              signal: abort.signal,
+              onUsage,
+            })) {
               send(encodeEvent(event));
+              if (event.type === 'done') result.finishReason = event.finishReason;
             }
           } catch (error) {
             if (abort.signal.aborted) {
-              console.info(JSON.stringify({ event: 'ai-chat.aborted' }));
+              result = { outcome: 'aborted', status: 200 };
             } else {
               logError('stream', error);
               const code = toStreamErrorCode(error);
               send(encodeEvent({ type: 'error', code, message: strings.streamErrors[code] }));
+              result = { outcome: 'error', status: 200, code };
             }
           } finally {
             cleanup();
@@ -115,6 +258,7 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
               closed = true;
               controller.close();
             }
+            log({ ...result, ...(await pendingUsage.catch(() => ({}))) });
           }
         })();
       },
@@ -125,17 +269,6 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
       },
     });
 
-    return new Response(stream, { headers: SSE_HEADERS });
-  };
-}
-
-/** Logs failures for the site owner. Never includes visitor messages or secrets. */
-function logError(stage: string, error: unknown): void {
-  const details =
-    error instanceof ProviderError
-      ? { code: error.code, message: error.message }
-      : { message: error instanceof Error ? error.message : String(error) };
-  // auth means a wrong or revoked API key: something the site owner must fix.
-  const level = error instanceof ProviderError && error.code !== 'auth' ? 'warn' : 'error';
-  console[level](JSON.stringify({ event: 'ai-chat.error', stage, ...details }));
+    return new Response(stream, { headers: { ...SSE_HEADERS, ...reply.cors } });
+  }
 }

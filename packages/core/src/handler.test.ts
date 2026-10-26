@@ -167,3 +167,167 @@ describe('createChatHandler', () => {
     expect((await handler(post(question))).status).toBe(500);
   });
 });
+
+describe('createChatHandler guardrails', () => {
+  const ip = { clientIp: '203.0.113.7' };
+
+  it('limits requests per IP with a 429 and Retry-After, before calling the provider', async () => {
+    const { handler, calls } = setup();
+    for (let i = 0; i < 10; i++) expect((await handler(post('{bad'), ip)).status).toBe(400);
+
+    const response = await handler(post(question), ip);
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await response.json()).toMatchObject({ error: { code: 'rate_limited' } });
+    expect(calls).toHaveLength(0);
+    expect((await handler(post(question), { clientIp: '198.51.100.1' })).status).toBe(200);
+  });
+
+  it('applies the global ceiling across IPs', async () => {
+    const { handler } = setup({}, { config: testConfig({ limits: { rpmGlobal: 2 } }) });
+    await handler(post('{bad'), { clientIp: '1.1.1.1' });
+    await handler(post('{bad'), { clientIp: '2.2.2.2' });
+    expect((await handler(post(question), { clientIp: '3.3.3.3' })).status).toBe(429);
+  });
+
+  it('limits concurrent replies and frees the slot when one ends or is stopped', async () => {
+    const { handler } = setup({ hang: true, chunks: [] });
+    const first = await handler(post(question), ip);
+    const second = await handler(post(question), ip);
+    expect((await handler(post(question), ip)).status).toBe(429);
+
+    await first.body!.cancel();
+    const third = await handler(post(question), ip);
+    expect(third.status).toBe(200);
+    await second.body!.cancel();
+    await third.body!.cancel();
+  });
+
+  it('frees the slot after a finished reply and after an early rejection', async () => {
+    const { handler } = setup({}, { config: testConfig({ limits: { maxConcurrentPerIp: 1 } }) });
+    await (await handler(post(question), ip)).text();
+    expect((await handler(post('{bad'), ip)).status).toBe(400);
+    expect((await handler(post(question), ip)).status).toBe(200);
+  });
+
+  it('rejects other sites with a 403 and no CORS headers', async () => {
+    const { handler, calls } = setup();
+    const response = await handler(post(question, { headers: { Origin: 'https://evil.example' } }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'forbidden_origin' } });
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('accepts its own origin and listed origins, with CORS on streams and errors', async () => {
+    const site = 'https://www.shop.example';
+    const { handler } = setup({}, { config: testConfig({ allowedOrigins: [site] }) });
+    const headers = { 'Content-Type': 'application/json', Origin: site };
+
+    const ok = await handler(post(question, { headers }));
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('access-control-allow-origin')).toBe(site);
+    expect(ok.headers.get('vary')).toBe('Origin');
+
+    const bad = await handler(post('{bad', { headers }));
+    expect(bad.headers.get('access-control-allow-origin')).toBe(site);
+  });
+
+  it('answers CORS preflight for allowed origins only', async () => {
+    const site = 'https://www.shop.example';
+    const { handler } = setup({}, { config: testConfig({ allowedOrigins: [site] }) });
+    const preflight = (origin: string) =>
+      handler(
+        new Request('http://localhost/api/chat', {
+          method: 'OPTIONS',
+          headers: { Origin: origin },
+        }),
+      );
+
+    const ok = await preflight(site);
+    expect(ok.status).toBe(204);
+    expect(ok.headers.get('access-control-allow-methods')).toBe('POST');
+    expect((await preflight('https://evil.example')).status).toBe(403);
+  });
+
+  it('rejects oversized bodies and conversations', async () => {
+    const { handler, calls } = setup(
+      {},
+      { config: testConfig({ limits: { maxBodyBytes: 1000, maxConversationChars: 50 } }) },
+    );
+    const big = await handler(post({ messages: [{ role: 'user', content: 'x'.repeat(2000) }] }));
+    expect(big.status).toBe(413);
+
+    const long = {
+      messages: [
+        { role: 'user', content: 'x'.repeat(30) },
+        { role: 'assistant', content: 'y'.repeat(30) },
+        { role: 'user', content: 'z' },
+      ],
+    };
+    const response = await handler(post(long));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'message_too_long' } });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses new chats with a 503 once the daily budget is spent, until the next UTC day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-26T10:00:00Z'));
+      // One reply costs 107 weighted tokens (see USAGE).
+      const { handler, calls } = setup(
+        {},
+        { config: testConfig({ limits: { dailyTokenBudget: 100 } }) },
+      );
+      await (await handler(post(question))).text();
+
+      const response = await handler(post({ ...question, lang: 'en' }));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ error: { code: 'unavailable' } });
+      expect(calls).toHaveLength(1);
+
+      vi.setSystemTime(new Date('2026-10-27T00:00:01Z'));
+      expect((await handler(post(question))).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('logs one entry per request with usage and budget, never the message or the raw IP', async () => {
+    const logger = vi.fn();
+    const { handler } = setup({}, { logger });
+    const secret = 'mi correo es ana@example.com';
+    await (await handler(post({ messages: [{ role: 'user', content: secret }] }), ip)).text();
+    await handler(post('{bad'), ip);
+
+    const entries = logger.mock.calls.map(([entry]) => entry);
+    expect(entries).toEqual([
+      expect.objectContaining({
+        event: 'ai-chat.request',
+        outcome: 'ok',
+        status: 200,
+        finishReason: 'stop',
+        weightedTokens: 107,
+        budgetUsedToday: 107,
+        ip: expect.stringMatching(/^[0-9a-f]{12}$/),
+      }),
+      expect.objectContaining({ outcome: 'rejected', status: 400, code: 'invalid_request' }),
+    ]);
+    const text = JSON.stringify(entries);
+    expect(text).not.toContain('ana@example.com');
+    expect(text).not.toContain(ip.clientIp);
+  });
+
+  it('logs a stopped reply as aborted', async () => {
+    const logger = vi.fn();
+    const { handler } = setup({ hang: true, chunks: ['Hola'] }, { logger });
+    const response = await handler(post(question), ip);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    await vi.waitFor(() =>
+      expect(logger).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'aborted' })),
+    );
+  });
+});

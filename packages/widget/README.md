@@ -113,4 +113,4 @@ Methods: `show()`, `hide()`, `toggle()`, `send(text)`, `reset()`.
 
 - **Persistence:** the conversation and open state live in `sessionStorage` per endpoint, so they survive navigation but not a closed tab. Without storage (privacy mode, sandboxed iframes) everything still works in memory.
 - **Stop:** the visitor keeps the partial reply. If nothing had arrived, the question goes back into the input.
-- **Errors:** they show as a bubble with Retry. If the conversation is too long, the button starts a new one instead.
+- **Errors:** they show as a bubble with Retry. When retrying can't help, because the request itself was rejected (`invalid_request`, `message_too_long`, `too_many_turns`, `forbidden_origin`), the button starts a new conversation instead. `rate_limited` and `unavailable` are temporary and keep Retry. The `ai-chat:error` event carries the code; the full list is in [docs/protocol.md](../../docs/protocol.md).

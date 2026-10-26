@@ -26,7 +26,21 @@ export {
   type ChatStreamEvent,
   type ChatStreamOptions,
 } from './client.js';
-export { createChatHandler, type ChatHandler, type ChatHandlerOptions } from './handler.js';
+export {
+  createChatHandler,
+  type ChatHandler,
+  type ChatHandlerOptions,
+  type RequestContext,
+} from './handler.js';
+export { memoryStore, type GuardStore } from './guard/store.js';
+export { weightedTokens } from './guard/budget.js';
+export {
+  defaultLogger,
+  type ErrorLogEntry,
+  type LogEntry,
+  type Logger,
+  type RequestLogEntry,
+} from './guard/log.js';
 export { parseChatRequest, type ParsedChatRequest, type ParseResult } from './request.js';
 export { encodeEvent, encodeComment } from './sse.js';
 export * from './protocol.js';

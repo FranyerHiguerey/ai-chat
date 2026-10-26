@@ -35,6 +35,8 @@ export function parseChatRequest(body: unknown, config: ChatConfig): ParseResult
   if (messages.some((m) => m.content.length > config.limits.maxMessageChars)) {
     return fail('message_too_long');
   }
+  const total = messages.reduce((sum, m) => sum + m.content.length, 0);
+  if (total > config.limits.maxConversationChars) return fail('message_too_long');
   if ((messages.length + 1) / 2 > config.limits.maxTurns) return fail('too_many_turns');
 
   return { ok: true, value: { messages, lang } };

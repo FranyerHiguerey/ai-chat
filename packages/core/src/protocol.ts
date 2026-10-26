@@ -15,7 +15,13 @@ export type StreamErrorCode = 'rate_limited' | 'unavailable' | 'internal';
 
 /** Error codes sent as a JSON response before any stream opens. */
 export type RequestErrorCode =
-  'invalid_request' | 'message_too_long' | 'too_many_turns' | 'method_not_allowed';
+  | 'invalid_request'
+  | 'message_too_long'
+  | 'too_many_turns'
+  | 'method_not_allowed'
+  | 'forbidden_origin'
+  | 'rate_limited'
+  | 'unavailable';
 
 export interface ChatRequestBody {
   messages: ChatMessage[];

@@ -25,7 +25,10 @@ export interface AskOptions {
   lang?: string;
 }
 
-export interface ChatStreamOptions extends AskOptions, StreamOptions {}
+export interface ChatStreamOptions extends AskOptions, StreamOptions {
+  /** Called with this reply's usage, after the client-wide `onUsage`. */
+  onUsage?: (usage: UsageReport) => void;
+}
 
 /** The events a chat stream yields. `start` and `error` are added by the HTTP handler. */
 export type ChatStreamEvent = Extract<ServerEvent, { type: 'delta' | 'replace' | 'done' }>;
@@ -73,7 +76,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
 
   async function* stream(
     messages: ChatMessage[],
-    { lang, signal }: ChatStreamOptions = {},
+    { lang, signal, onUsage: onReplyUsage }: ChatStreamOptions = {},
   ): AsyncGenerator<ChatStreamEvent> {
     for await (const event of provider.stream({ system, messages, maxTokens }, { signal })) {
       if (event.type === 'text') {
@@ -81,6 +84,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
         continue;
       }
       onUsage(event.usage);
+      onReplyUsage?.(event.usage);
       if (event.finishReason === 'refusal') {
         // A refusal can arrive after partial output; that partial must not be kept.
         yield { type: 'replace', text: stringsFor(lang, config).refusal };
