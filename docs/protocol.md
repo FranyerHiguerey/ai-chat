@@ -91,6 +91,29 @@ A stream always ends with exactly one `done` or `error`. If the connection close
 
 **Retrying.** Send the same `messages` again. The server is stateless, so a retry is just a new request.
 
+## Public widget settings
+
+`GET` on the same endpoint returns the settings the widget shows, so a dashboard can change them without new markup. It never reaches the model and isn't rate limited; it is origin-checked like `POST`.
+
+```http
+GET /api/chat
+Accept: application/json
+```
+
+```json
+{
+  "protocol": 1,
+  "widget": {
+    "name": "Nova",
+    "greeting": { "es": "¡Hola!", "en": "Hi!" },
+    "starters": { "es": ["¿Pedido mínimo?"] },
+    "handoff": { "href": "https://wa.me/584121234567" }
+  }
+}
+```
+
+Every `widget` field is optional (`name`, `avatar`, `greeting`, `starters`, `teaser`, `handoff`); texts are a string or `{ es, en }`. The response is cacheable for 60 seconds. The widget reads it when it has the `remote-config` attribute.
+
 ## Forward compatibility
 
 Clients must ignore events they don't recognize. New features add new events and never change existing ones; a breaking change would raise `protocol` in `start`.

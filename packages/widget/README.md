@@ -41,17 +41,18 @@ For React, use [`@franyerhiguerey/ai-chat-react`](../react).
 ></ai-chat>
 ```
 
-| Attribute   | Default                               | Notes                                                    |
-| ----------- | ------------------------------------- | -------------------------------------------------------- |
-| `endpoint`  | `/api/chat`                           | Your ai-chat endpoint                                    |
-| `name`      | "Asistente" / "Assistant"             | Header, welcome screen, screen reader labels             |
-| `avatar`    | initials of `name` on the brand color | Image URL                                                |
-| `lang`      | `<html lang>`, then the browser       | `es` or `en`. Sets the UI text and the server's errors   |
-| `theme`     | `auto`                                | `auto`, `light` or `dark`                                |
-| `status`    | "Responde al instante"                | The line under the name                                  |
-| `open`      | closed                                | Present means open. Also `show()`, `hide()`, `toggle()`  |
-| `max-chars` | `2000`                                | Keep it equal to the server's `limits.maxMessageChars`   |
-| `config`    |                                       | JSON for the options below. Or set the `config` property |
+| Attribute       | Default                               | Notes                                                                                                                                                  |
+| --------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `endpoint`      | `/api/chat`                           | Your ai-chat endpoint                                                                                                                                  |
+| `name`          | "Asistente" / "Assistant"             | Header, welcome screen, screen reader labels                                                                                                           |
+| `avatar`        | initials of `name` on the brand color | Image URL                                                                                                                                              |
+| `lang`          | `<html lang>`, then the browser       | `es` or `en`. Sets the UI text and the server's errors                                                                                                 |
+| `theme`         | `auto`                                | `auto`, `light` or `dark`                                                                                                                              |
+| `status`        | "Responde al instante"                | The line under the name                                                                                                                                |
+| `open`          | closed                                | Present means open. Also `show()`, `hide()`, `toggle()`                                                                                                |
+| `max-chars`     | `2000`                                | Keep it equal to the server's `limits.maxMessageChars`                                                                                                 |
+| `config`        |                                       | JSON for the options below. Or set the `config` property                                                                                               |
+| `remote-config` | off                                   | Present: read `name`, `avatar` and the options below from the endpoint's `GET` (dashboard edits apply without new markup). Attributes and `config` win |
 
 ### `config`
 

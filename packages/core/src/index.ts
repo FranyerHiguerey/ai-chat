@@ -1,6 +1,11 @@
 export {
   configSchema,
+  siteSettingsSchema,
+  siteSettingsJsonSchema,
+  widgetSchema,
   defineConfig,
+  validateConfig,
+  validateSiteSettings,
   loadEnv,
   ConfigError,
   DEFAULT_MODELS,
@@ -11,7 +16,20 @@ export {
   type ChatEnv,
   type Language,
   type ProviderName,
+  type SiteSettings,
+  type SiteSettingsInput,
+  type ValidationIssue,
+  type ValidationResult,
+  type WidgetSettings,
 } from './config.js';
+export {
+  cachedSource,
+  folderSource,
+  staticSource,
+  type CachedSourceOptions,
+  type ChatSource,
+  type SourceData,
+} from './source.js';
 export { loadKnowledge, KnowledgeError, type KnowledgeDoc } from './knowledge.js';
 export { buildSystemPrompt } from './prompt.js';
 export { createProvider } from './providers/index.js';

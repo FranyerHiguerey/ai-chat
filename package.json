@@ -14,7 +14,8 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
-    "playground": "turbo run build --filter=playground^... && pnpm --filter playground dev"
+    "playground": "turbo run build --filter=playground^... && pnpm --filter playground dev",
+    "admin": "turbo run build --filter=admin^... && pnpm --filter admin dev"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

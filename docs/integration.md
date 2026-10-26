@@ -3,13 +3,13 @@
 There are two ways to put ai-chat on a site:
 
 1. **In code.** A developer adds a config file, a folder of markdown knowledge and one server route. This works today.
-2. **From a dashboard.** The site's own admin panel or CMS supplies the company info, knowledge, catalog and settings, so the owner can change the bot without a redeploy. ai-chat stays a library: it provides hooks a dashboard can feed, not a hosted service. This is planned (see [Roadmap](#roadmap)).
+2. **From a dashboard.** The site's own admin panel or CMS supplies the company info, widget settings and knowledge, so the owner can change the bot without a redeploy. ai-chat stays a library: it provides hooks a dashboard can feed, not a hosted service. See [section 2](#2-dashboard-hooks).
 
 In both cases the provider API key lives only in the server's environment. It is never a config field, never stored by a dashboard and never sent to the browser.
 
 > Before deploying publicly, go through the [pre-deploy checklist](#pre-deploy-checklist): the endpoint spends your API credit, and the guardrails only work as well as they are set up.
 
-## 1. Code path (available now)
+## 1. Code path
 
 Install the server and browser packages:
 
@@ -124,82 +124,92 @@ Every check runs before the model is called, so a rejected request costs nothing
 - [ ] On serverless or multiple instances, a shared `store` is configured.
 - [ ] A spending limit is also set in the provider's console, as a second line of defense.
 
-## 2. Dashboard hooks (planned: M6)
+## 2. Dashboard hooks
 
-Today the handler reads a static config and a folder on disk, once per process. M6 makes both pluggable.
+Without a source, the handler reads `config` and its knowledge folder once per process. With a source, the bot's content comes from wherever the dashboard keeps it, and edits apply without a redeploy.
+
+### Site settings and deploy config
+
+A dashboard edits only the **site settings**. Everything that protects your API credit stays in code, so no dashboard form can loosen it:
+
+| Site settings (owner, from a dashboard)                                                       | Deploy config (developer, in code)                                                                                 |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `company` (name, description, website, contact, hours), `languages` (default, tone), `widget` | `limits`, `allowedOrigins`, `features` (lead webhook, handoff), `knowledgeDir`; provider, model and API key in env |
+
+`widget` holds what the visitor sees: `name`, `avatar`, `greeting`, `starters`, `teaser` and a `handoff` link, with texts given once or per language (`{ es, en }`).
 
 ### Sources
 
-A source tells the handler where the bot's content comes from:
-
 ```ts
 interface ChatSource {
-  load(): Promise<{
-    config: ChatConfigInput;
-    knowledge: KnowledgeDoc[];
-    catalog?: CatalogItem[];
-    /** A content hash. Same version = same system prompt bytes. */
-    version: string;
-  }>;
+  load(): Promise<{ settings?: SiteSettingsInput; knowledge: KnowledgeDoc[] }>;
 }
 ```
 
-Built-in sources:
-
-| Source                            | Use                                                                      |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `folderSource({ config, dir })`   | Today's behavior: a config object plus a folder of `.md` files.          |
-| `staticSource(data)`              | Data the site already has in memory, e.g. fetched from its DB or CMS.    |
-| `cachedSource(loader, { ttlMs })` | Calls `loader` at most once per `ttlMs`, for data behind a network call. |
+| Source                             | Use                                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| `staticSource(data or () => data)` | Data the site has in memory, or a function that fetches it from its database or CMS.      |
+| `folderSource({ dir })`            | A folder with an optional `settings.json` and `.md` files (what `examples/admin` writes). |
+| `cachedSource(source, { ttlMs })`  | Loads at most once per `ttlMs`. If a reload fails, the last good data keeps serving.      |
 
 ```ts
 const handler = createChatHandler({
+  config, // deploy config; its company is the fallback until the source has settings
   env: loadEnv(),
-  source: cachedSource(() => db.getChatSettings(siteId), { ttlMs: 60_000 }),
+  source: cachedSource(
+    staticSource(async () => ({
+      settings: await db.getChatSettings(siteId),
+      knowledge: await db.getKnowledgeDocs(siteId), // [{ file, content }]
+    })),
+    { ttlMs: 60_000 },
+  ),
 });
 ```
 
-`config` keeps working as before; `source` is an alternative, and `knowledgeDir` becomes optional.
+The handler loads the source on each chat request and rebuilds the system prompt **only when the content changes** (it hashes settings and knowledge). Prompt caching needs identical prompt bytes between requests, so a source must not add dates, IDs or random values to its content.
 
-The handler rebuilds the system prompt only when `version` changes. Prompt caching needs the prompt bytes to stay identical between requests, so a source must not put dates, IDs or random values in its content.
-
-A new `limits.maxKnowledgeChars` is checked at load time. Every request sends the whole knowledge, so an oversized upload would otherwise multiply the cost of every message without anyone noticing.
+If new settings are invalid, or the knowledge is over `limits.maxKnowledgeChars` (default 200,000 characters), the handler logs an `ai-chat.error` with `stage: "source"` and keeps answering from the last good version. The cap exists because every request sends the whole knowledge: one oversized upload would otherwise multiply the cost of every message.
 
 ### Building the admin forms
 
-A dashboard renders its own forms. Core gives it what it needs to validate them:
+The dashboard renders its own forms. Core helps it validate them:
 
-- `validateConfig(input)` returns per-field issues (`{ path, message }[]`) instead of throwing, so a form can show errors next to each field.
-- `configJsonSchema` is the config schema as JSON Schema, for generating forms or validating on the client. (Core uses zod 3, so this comes from `zod-to-json-schema`.)
+- `validateSiteSettings(input)` returns `{ ok: true, value }` or `{ ok: false, issues: [{ path, message }] }`, with paths like `company.contact.email`, so each error can sit next to its field. Keys that aren't site settings are dropped.
+- `validateConfig(input)` does the same for a whole config.
+- `siteSettingsJsonSchema` is the site settings as JSON Schema (draft 7), for form generators or client-side checks.
 
-The settings fall into two groups, and a dashboard should normally expose only the first:
+### Public widget settings
 
-| Site-editable (owner)                                                                                            | Deploy-time (developer)                                                                       |
-| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| company name, description, website, contact, hours; tone; languages; handoff links; widget branding and greeting | limits, `allowedOrigins`, lead webhook URL and secret, provider and model, API key (env only) |
+`GET` on the chat endpoint returns `{ "protocol": 1, "widget": { … } }`, cacheable for 60 seconds. It never calls the model, so it isn't rate limited. Add `remote-config` to the widget to use it:
 
-### Public widget settings (optional)
-
-A `GET` on the chat endpoint returns the public settings: branding, greeting and handoff links. The widget fetches them on load, so a change in the dashboard shows up without editing the page markup. Attributes set on `<ai-chat>` still win.
-
-## 3. Owner knowledge uploads (planned: M6)
-
-A new Node-only package, `@franyerhiguerey/ai-chat-ingest`, turns uploaded files into `KnowledgeDoc`s:
-
-```ts
-const doc = await toKnowledgeDoc({ name: 'precios.pdf', type: 'application/pdf', bytes });
-// { file: 'precios.md', content: '…plain text…' }
+```html
+<ai-chat endpoint="/api/chat" remote-config></ai-chat>
 ```
 
-| Type          | How                                 |
-| ------------- | ----------------------------------- |
-| `.md`, `.txt` | Used as is, line endings normalized |
-| HTML          | Stripped to text                    |
-| PDF           | Text extracted with `unpdf`         |
-| DOCX          | Converted with `mammoth`            |
-| Others        | Rejected with a typed `IngestError` |
+Attributes on `<ai-chat>` and its `config` property still win over the served settings.
 
-Conversion runs **when the owner uploads**, not during a chat. The chat path stays fast and the prompt stays deterministic. The dashboard stores the resulting text wherever it likes (DB, object storage, a folder) and hands it back through a source. Core never depends on the parsers.
+## 3. Owner knowledge uploads
+
+`@franyerhiguerey/ai-chat-ingest` (Node only) turns uploaded files into knowledge documents:
+
+```ts
+import { toKnowledgeDoc, IngestError } from '@franyerhiguerey/ai-chat-ingest';
+
+const doc = await toKnowledgeDoc({ name: 'Lista de Precios.pdf', type: 'application/pdf', bytes });
+// { file: 'lista-de-precios.md', content: '…plain text…' }
+```
+
+| Type            | How                                           |
+| --------------- | --------------------------------------------- |
+| `.md`, `.txt`   | Used as is, line endings normalized           |
+| `.html`, `.htm` | Scripts and styles dropped, converted to text |
+| `.pdf`          | Text extracted with `unpdf` (install it)      |
+| `.docx`         | Text extracted with `mammoth` (install it)    |
+| Anything else   | `IngestError` with code `unsupported_type`    |
+
+Other error codes: `too_large` (default 10 MB), `empty` (for example a scanned PDF without a text layer) and `missing_parser`. `file` is always a safe slug ending in `.md`, so it can be used as a file name without path tricks.
+
+Convert **when the owner uploads**, not during a chat: parsing is slow, and stored text keeps the prompt fast and stable. Store the result wherever the dashboard keeps data and return it from the source.
 
 ## 4. Catalog import (planned: M7)
 
@@ -219,23 +229,24 @@ Configured with `features.attachments: { enabled, maxBytes, types }`. Attachment
 
 Uploads add storage and token cost per visitor, so they get their own size, count and rate limits on top of the guardrails above.
 
-## 6. Reference dashboard (planned: M6)
+## 6. Reference dashboard
 
-`examples/admin` is a small demo, not a product: a Hono app behind HTTP Basic auth (`ADMIN_PASSWORD`) that shows the hooks working together.
+[`examples/admin`](../examples/admin) is a small demo, not a product. Run it with `pnpm admin` (port 4322) after setting `ADMIN_PASSWORD` in `.env`.
 
-- Forms generated from `configJsonSchema`, validated with `validateConfig`.
-- Knowledge upload, list and delete through ai-chat-ingest; catalog CSV import.
-- Everything saved to a local JSON file and folder, read back with `cachedSource`.
-- A live widget preview and a copyable embed snippet.
+- **Settings:** a hand-written form, validated with `validateSiteSettings`, errors shown per field.
+- **Knowledge:** upload (md, txt, HTML, PDF, DOCX through ai-chat-ingest), list with the character budget, delete.
+- **Preview:** the widget with `remote-config`, and an embed snippet to copy.
+- Everything is stored in `examples/admin/data/` (`settings.json` plus `.md` files, copied from `seed/` on first run) and read by `cachedSource(folderSource(...))` with a 5-second TTL.
+- Admin routes need HTTP Basic auth. Their POSTs must come from the dashboard's own origin, because browsers resend Basic credentials automatically, which would otherwise allow cross-site form posts.
 
-Authentication, storage and hosting of a real dashboard are the site's responsibility.
+A real dashboard brings its own authentication, storage and hosting.
 
 ## Roadmap
 
 | Milestone | Scope                                                                           |
 | --------- | ------------------------------------------------------------------------------- |
 | M5        | Guardrails: rate limit, origin/CORS, caps, usage logging (done)                 |
-| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin`        |
+| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin` (done) |
 | M7        | Tools and rich UI: suggestions, item cards and catalog, handoff card, lead form |
 | M8        | Visitor attachments (protocol v2)                                               |
 | M9        | Express adapter, Astro example, first real site integration                     |

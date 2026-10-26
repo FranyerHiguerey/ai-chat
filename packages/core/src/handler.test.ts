@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatEnv } from './config.js';
 import { ProviderError } from './errors.js';
 import { createChatHandler, type ChatHandlerOptions } from './handler.js';
+import { staticSource, type SourceData } from './source.js';
 import { fakeProvider, testConfig, type FakeProviderOptions } from '../test/helpers.js';
 
 const env: ChatEnv = { provider: 'anthropic', apiKey: 'sk-test', model: 'claude-haiku-5-5' };
@@ -104,11 +105,11 @@ describe('createChatHandler', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('only accepts POST', async () => {
+  it('only accepts GET and POST', async () => {
     const { handler } = setup();
-    const response = await handler(new Request('http://localhost/api/chat'));
+    const response = await handler(new Request('http://localhost/api/chat', { method: 'PUT' }));
     expect(response.status).toBe(405);
-    expect(response.headers.get('allow')).toBe('POST');
+    expect(response.headers.get('allow')).toBe('GET, POST');
   });
 
   it('aborts the provider call when the visitor cancels the stream', async () => {
@@ -329,5 +330,125 @@ describe('createChatHandler guardrails', () => {
     await vi.waitFor(() =>
       expect(logger).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'aborted' })),
     );
+  });
+});
+
+describe('createChatHandler with a source', () => {
+  const doc = (content: string) => ({ file: 'faq.md', content });
+  const settings = (name: string) => ({ company: { name, description: 'Envases.' } });
+
+  /** A source whose data the test can change between requests. */
+  function mutableSource(initial: SourceData) {
+    let data = initial;
+    return { source: staticSource(() => data), set: (next: SourceData) => (data = next) };
+  }
+
+  const systemOf = (calls: ReturnType<typeof fakeProvider>['calls'], i: number) =>
+    calls[i]?.request.system.knowledge ?? '';
+
+  it('answers from the source, overriding company and keeping the deploy limits', async () => {
+    const { source } = mutableSource({
+      settings: settings('Nova'),
+      knowledge: [doc('Envíos: sí.')],
+    });
+    const { handler, calls } = setup(
+      {},
+      { source, config: testConfig({ limits: { maxTurns: 1 } }) },
+    );
+    await (await handler(post(question))).text();
+
+    expect(systemOf(calls, 0)).toContain('Name: Nova');
+    expect(systemOf(calls, 0)).toContain('Envíos: sí.');
+    const twoTurns = {
+      messages: [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: 'b' },
+        { role: 'user', content: 'c' },
+      ],
+    };
+    expect((await handler(post(twoTurns))).status).toBe(400);
+  });
+
+  it('ignores keys a dashboard may not set, such as limits', async () => {
+    const sneaky = { ...settings('Nova'), limits: { maxTurns: 99 } } as SourceData['settings'];
+    const { source } = mutableSource({ settings: sneaky, knowledge: [doc('x')] });
+    const { handler } = setup({}, { source, config: testConfig({ limits: { maxTurns: 1 } }) });
+    await (await handler(post(question))).text();
+    const twoTurns = {
+      messages: [question.messages[0], { role: 'assistant', content: 'b' }, question.messages[0]],
+    };
+    expect((await handler(post(twoTurns))).status).toBe(400);
+  });
+
+  it('rebuilds only when the content changes, keeping the prompt bytes stable', async () => {
+    const { source, set } = mutableSource({ settings: settings('Nova'), knowledge: [doc('v1')] });
+    const { handler, calls } = setup({}, { source });
+    await (await handler(post(question))).text();
+    await (await handler(post(question))).text();
+    expect(calls[1]?.request.system).toBe(calls[0]?.request.system); // same build, same object
+
+    set({ settings: settings('Nova'), knowledge: [doc('v2')] });
+    await (await handler(post(question))).text();
+    expect(systemOf(calls, 2)).toContain('v2');
+  });
+
+  it('keeps serving the last good build when new settings are invalid', async () => {
+    const logger = vi.fn();
+    const { source, set } = mutableSource({ settings: settings('Nova'), knowledge: [doc('v1')] });
+    const { handler, calls } = setup({}, { source, logger });
+    await (await handler(post(question))).text();
+
+    set({ settings: { company: { name: '', description: 'x' } }, knowledge: [doc('v2')] });
+    const response = await handler(post(question));
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(systemOf(calls, 1)).toContain('v1');
+    expect(logger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'ai-chat.error',
+        stage: 'source',
+        message: expect.stringMatching(/company\.name/),
+      }),
+    );
+  });
+
+  it('rejects knowledge over maxKnowledgeChars', async () => {
+    const { source } = mutableSource({ knowledge: [doc('x'.repeat(200))] });
+    const { handler } = setup(
+      {},
+      { source, config: testConfig({ limits: { maxKnowledgeChars: 100 } }) },
+    );
+    expect((await handler(post(question))).status).toBe(500);
+  });
+
+  it('serves the public widget settings on GET, cacheable and not rate limited', async () => {
+    const widget = { name: 'Nova', greeting: { es: '¡Hola!', en: 'Hi!' } };
+    const { source } = mutableSource({
+      settings: { ...settings('Nova'), widget },
+      knowledge: [doc('x')],
+    });
+    const { handler, calls } = setup(
+      {},
+      { source, config: testConfig({ limits: { rpmPerIp: 1 } }) },
+    );
+
+    for (let i = 0; i < 3; i++) {
+      const response = await handler(new Request('http://localhost/api/chat'), {
+        clientIp: '1.1.1.1',
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('public, max-age=60');
+      expect(await response.json()).toEqual({ protocol: 1, widget });
+    }
+    expect(calls).toHaveLength(0);
+    expect((await handler(post(question), { clientIp: '1.1.1.1' })).status).toBe(200);
+  });
+
+  it('refuses GET from other sites', async () => {
+    const { handler } = setup();
+    const response = await handler(
+      new Request('http://localhost/api/chat', { headers: { Origin: 'https://evil.example' } }),
+    );
+    expect(response.status).toBe(403);
   });
 });

@@ -1,0 +1,49 @@
+{
+  "name": "@franyerhiguerey/ai-chat-ingest",
+  "version": "0.0.0",
+  "description": "Turns uploaded files (md, txt, HTML, PDF, DOCX) into ai-chat knowledge documents",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "mammoth": "*",
+    "unpdf": "*"
+  },
+  "peerDependenciesMeta": {
+    "mammoth": {
+      "optional": true
+    },
+    "unpdf": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "mammoth": "^1.13.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "unpdf": "^1.9.1",
+    "vitest": "^3.0.0"
+  }
+}

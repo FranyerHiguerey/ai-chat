@@ -1,0 +1,27 @@
+{
+  "name": "admin",
+  "private": true,
+  "type": "module",
+  "description": "Reference dashboard: edit the bot's settings and knowledge without code",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "start": "tsx server.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "@franyerhiguerey/ai-chat-core": "workspace:*",
+    "@franyerhiguerey/ai-chat-ingest": "workspace:*",
+    "@franyerhiguerey/ai-chat-widget": "workspace:*",
+    "@hono/node-server": "^2.1.5",
+    "mammoth": "^1.13.0",
+    "openai": "^7.43.0",
+    "unpdf": "^1.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

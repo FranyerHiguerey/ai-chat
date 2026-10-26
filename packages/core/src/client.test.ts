@@ -111,3 +111,30 @@ describe('createChatClient', () => {
     });
   });
 });
+
+describe('createChatClient knowledge', () => {
+  const { provider } = fakeProvider();
+
+  it('uses knowledge passed in instead of the folder', async () => {
+    const knowledge = [{ file: 'a.md', content: 'Solo esto.' }];
+    const chat = await createChatClient({ config: testConfig(), env, provider, knowledge });
+    expect(chat.system.knowledge).toContain('Solo esto.');
+    expect(chat.system.knowledge).not.toContain('source="faq.md"');
+  });
+
+  it('fails clearly without a knowledge folder or documents', async () => {
+    const config = testConfig({ knowledgeDir: undefined });
+    await expect(createChatClient({ config, env, provider })).rejects.toThrow(/knowledgeDir/);
+    await expect(createChatClient({ config, env, provider, knowledge: [] })).rejects.toThrow(
+      /No knowledge documents/,
+    );
+  });
+
+  it('enforces maxKnowledgeChars', async () => {
+    const config = testConfig({ limits: { maxKnowledgeChars: 10 } });
+    const knowledge = [{ file: 'a.md', content: 'x'.repeat(11) }];
+    await expect(createChatClient({ config, env, provider, knowledge })).rejects.toThrow(
+      /maxKnowledgeChars/,
+    );
+  });
+});

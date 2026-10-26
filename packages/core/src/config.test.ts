@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, defineConfig, loadEnv } from './config.js';
+import {
+  ConfigError,
+  defineConfig,
+  loadEnv,
+  siteSettingsJsonSchema,
+  validateSiteSettings,
+} from './config.js';
 import { testConfig } from '../test/helpers.js';
 
 describe('defineConfig', () => {
@@ -16,7 +22,9 @@ describe('defineConfig', () => {
       maxConcurrentPerIp: 2,
       maxTokens: 1024,
       dailyTokenBudget: 1_000_000,
+      maxKnowledgeChars: 200_000,
     });
+    expect(config.widget).toEqual({});
     expect(config.features).toEqual({});
     expect(config.allowedOrigins).toEqual([]);
   });
@@ -109,5 +117,51 @@ describe('loadEnv', () => {
       return;
     }
     throw new Error('expected loadEnv to throw');
+  });
+});
+
+describe('validateSiteSettings', () => {
+  const valid = {
+    company: { name: 'Acme', description: 'Envases.', contact: { whatsapp: '+584121234567' } },
+    widget: {
+      greeting: { es: '¡Hola!' },
+      starters: ['¿Hacen envíos?', { label: 'Precios', icon: 'tag' }],
+    },
+  };
+
+  it('applies defaults and drops keys that are not site settings', () => {
+    const result = validateSiteSettings({ ...valid, limits: { maxTurns: 999 } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.company.contact.whatsapp).toBe('584121234567');
+    expect(result.value.languages.default).toBe('es');
+    expect(result.value).not.toHaveProperty('limits');
+  });
+
+  it('returns one issue per invalid field instead of throwing', () => {
+    const result = validateSiteSettings({
+      company: { name: '', description: 'x', contact: { email: 'not-an-email' } },
+      widget: { avatar: 'nope', starters: [{ label: 'x', icon: 'rocket' }] },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.path).sort()).toEqual([
+      'company.contact.email',
+      'company.name',
+      'widget.avatar',
+      'widget.starters',
+    ]);
+  });
+});
+
+describe('siteSettingsJsonSchema', () => {
+  it('describes the editable fields for form builders', () => {
+    const schema = siteSettingsJsonSchema as {
+      properties: Record<string, { properties?: Record<string, unknown> }>;
+      required: string[];
+    };
+    expect(Object.keys(schema.properties).sort()).toEqual(['company', 'languages', 'widget']);
+    expect(schema.required).toEqual(['company']);
+    expect(Object.keys(schema.properties.company?.properties ?? {})).toContain('contact');
   });
 });

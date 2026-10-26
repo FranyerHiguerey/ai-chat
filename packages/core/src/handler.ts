@@ -1,4 +1,5 @@
-import { createChatClient, type ChatClient, type ChatClientOptions } from './client.js';
+import { createBuilder, type Build } from './build.js';
+import type { ChatClientOptions } from './client.js';
 import { ProviderError, toStreamErrorCode } from './errors.js';
 import { createBudget, weightedTokens } from './guard/budget.js';
 import { readJsonBody } from './guard/body.js';
@@ -11,6 +12,7 @@ import { stringsFor } from './i18n.js';
 import { PROTOCOL_VERSION, type RequestErrorBody, type RequestErrorCode } from './protocol.js';
 import { parseChatRequest } from './request.js';
 import { encodeComment, encodeEvent } from './sse.js';
+import type { ChatSource } from './source.js';
 import type { ChatMessage, UsageReport } from './types.js';
 
 export interface ChatHandlerOptions extends ChatClientOptions {
@@ -29,6 +31,11 @@ export interface ChatHandlerOptions extends ChatClientOptions {
   trustProxyHeader?: string;
   /** Receives one entry per request and per failure. Defaults to JSON lines on the console. */
   logger?: Logger;
+  /**
+   * Content from a dashboard or CMS. Its settings override `company`,
+   * `languages` and `widget`; `config` still sets everything else.
+   */
+  source?: ChatSource;
 }
 
 export type ChatHandler = (request: Request, context?: RequestContext) => Promise<Response>;
@@ -50,6 +57,9 @@ const SSE_HEADERS = {
  * Checks run cheapest first and all happen before the model is called, so a
  * rejected request costs nothing: method, origin, rate limits, body size,
  * request shape, then the daily budget.
+ *
+ * `GET` returns the public widget settings (`{ protocol, widget }`) so a
+ * widget with `remote-config` picks up dashboard edits without new markup.
  */
 export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
   const { config, heartbeatMs = 15_000, trustProxyHeader, logger = defaultLogger } = options;
@@ -57,20 +67,6 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
   const store = options.store ?? memoryStore();
   const limiter = createRateLimiter({ store, ...limits });
   const budget = createBudget({ store, dailyTokenBudget: limits.dailyTokenBudget });
-
-  // Built on the first request and reused, so the knowledge is read once. The
-  // request log carries usage, so the client's default usage line is turned off.
-  let clientPromise: Promise<ChatClient> | undefined;
-  const getClient = () => {
-    clientPromise ??= createChatClient({
-      ...options,
-      onUsage: options.onUsage ?? (() => {}),
-    }).catch((error: unknown) => {
-      clientPromise = undefined; // let the next request retry after a fix
-      throw error;
-    });
-    return clientPromise;
-  };
 
   const logError = (stage: string, error: unknown) => {
     const details =
@@ -80,6 +76,13 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
     logger({ event: 'ai-chat.error', stage, ...details });
   };
 
+  // The request log carries usage, so the client's default usage line is turned off.
+  const builder = createBuilder({
+    ...options,
+    onUsage: options.onUsage ?? (() => {}),
+    onStale: (error) => logError('source', error),
+  });
+
   return async (request, context) => {
     const startedAt = Date.now();
     const id = crypto.randomUUID();
@@ -88,7 +91,7 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
 
     if (request.method === 'OPTIONS') {
       return origin.ok
-        ? new Response(null, { status: 204, headers: { Allow: 'POST', ...cors } })
+        ? new Response(null, { status: 204, headers: { Allow: 'GET, POST', ...cors } })
         : requestError(403, 'forbidden_origin');
     }
 
@@ -119,7 +122,7 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
       headers: Record<string, string> = {},
     ) {
       const body: RequestErrorBody = {
-        error: { code, message: stringsFor(lang, config).requestErrors[code] },
+        error: { code, message: stringsFor(lang, builder.config).requestErrors[code] },
       };
       return Response.json(body, { status, headers: { ...headers, ...cors } });
     }
@@ -134,8 +137,13 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
       return requestError(status, code, lang, headers);
     };
 
-    if (request.method !== 'POST')
-      return reject(405, 'method_not_allowed', undefined, { Allow: 'POST' });
+    if (request.method === 'GET') {
+      if (!origin.ok) return requestError(403, 'forbidden_origin');
+      return publicSettings(cors);
+    }
+    if (request.method !== 'POST') {
+      return reject(405, 'method_not_allowed', undefined, { Allow: 'GET, POST' });
+    }
     if (!origin.ok) return reject(403, 'forbidden_origin');
 
     const slot = await limiter.check(ip);
@@ -153,7 +161,7 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
           ? reject(413, 'message_too_long')
           : reject(400, 'invalid_request');
       }
-      const parsed = parseChatRequest(body.value, config);
+      const parsed = parseChatRequest(body.value, builder.config);
       if (!parsed.ok) return reject(400, parsed.code, parsed.lang);
       const { messages, lang } = parsed.value;
       entry.lang = lang ?? null;
@@ -163,28 +171,47 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
         return reject(503, 'unavailable', lang);
       }
 
-      let chat: ChatClient;
+      let build: Build;
       try {
-        chat = await getClient();
+        build = await builder.current();
       } catch (error) {
         logError('setup', error);
         log({ outcome: 'error', status: 500, code: 'internal' });
         return Response.json(
-          { error: { code: 'internal', message: stringsFor(lang, config).streamErrors.internal } },
+          {
+            error: {
+              code: 'internal',
+              message: stringsFor(lang, builder.config).streamErrors.internal,
+            },
+          },
           { status: 500, headers: cors },
         );
       }
 
       streaming = true;
-      return streamReply({ request, chat, messages, lang, id, cors, release: slot.release, log });
+      return streamReply({ request, build, messages, lang, id, cors, release: slot.release, log });
     } finally {
       if (!streaming) slot.release();
     }
   };
 
+  /** The widget settings anyone may read. Cheap: no model call, so it isn't rate limited. */
+  async function publicSettings(cors: Record<string, string>): Promise<Response> {
+    let config = builder.config;
+    try {
+      config = (await builder.current()).config;
+    } catch (error) {
+      logError('setup', error);
+    }
+    return Response.json(
+      { protocol: PROTOCOL_VERSION, widget: config.widget },
+      { headers: { 'Cache-Control': 'public, max-age=60', ...cors } },
+    );
+  }
+
   function streamReply(reply: {
     request: Request;
-    chat: ChatClient;
+    build: Build;
     messages: ChatMessage[];
     lang?: string;
     id: string;
@@ -192,8 +219,9 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
     release: () => void;
     log: (changes: Partial<RequestLogEntry>) => void;
   }): Response {
-    const { request, chat, messages, lang, id, release, log } = reply;
-    const strings = stringsFor(lang, config);
+    const { request, build, messages, lang, id, release, log } = reply;
+    const { chat } = build;
+    const strings = stringsFor(lang, build.config);
 
     // One controller for both ways a visitor can leave: the request is aborted
     // (closed tab, network drop) or the response stream is cancelled (Stop).
@@ -213,13 +241,11 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
     };
 
     const onUsage = (usage: UsageReport) => {
-      pendingUsage = budget
-        .add(usage)
-        .then((budgetUsedToday) => ({
-          usage,
-          weightedTokens: weightedTokens(usage),
-          budgetUsedToday,
-        }));
+      pendingUsage = budget.add(usage).then((budgetUsedToday) => ({
+        usage,
+        weightedTokens: weightedTokens(usage),
+        budgetUsedToday,
+      }));
     };
 
     const stream = new ReadableStream<Uint8Array>({

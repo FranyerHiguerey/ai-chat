@@ -1,6 +1,6 @@
 import type { ChatConfig, ChatEnv } from './config.js';
 import { stringsFor } from './i18n.js';
-import { loadKnowledge } from './knowledge.js';
+import { KnowledgeError, loadKnowledge, type KnowledgeDoc } from './knowledge.js';
 import { buildSystemPrompt } from './prompt.js';
 import type { ServerEvent } from './protocol.js';
 import { createProvider } from './providers/index.js';
@@ -40,6 +40,8 @@ export interface ChatClientOptions {
   provider?: ChatProvider;
   /** Called after every request with token usage. Defaults to a one-line JSON log. */
   onUsage?: (usage: UsageReport) => void;
+  /** Knowledge already loaded (from a source). Otherwise it's read from `config.knowledgeDir`. */
+  knowledge?: KnowledgeDoc[];
 }
 
 export interface ChatClient {
@@ -53,14 +55,35 @@ function logUsage(usage: UsageReport): void {
   console.info(JSON.stringify({ event: 'ai-chat.usage', ...usage }));
 }
 
+/** The knowledge to answer from: the docs given, or the knowledge folder. Checked against the size cap. */
+async function resolveKnowledge(options: ChatClientOptions): Promise<KnowledgeDoc[]> {
+  const { config } = options;
+  let docs = options.knowledge;
+  if (!docs) {
+    if (!config.knowledgeDir) {
+      throw new KnowledgeError('No knowledge: set knowledgeDir or pass knowledge from a source');
+    }
+    docs = await loadKnowledge(config.knowledgeDir);
+  }
+  if (docs.length === 0) throw new KnowledgeError('No knowledge documents');
+
+  const chars = docs.reduce((sum, doc) => sum + doc.content.length, 0);
+  if (chars > config.limits.maxKnowledgeChars) {
+    throw new KnowledgeError(
+      `Knowledge is ${chars} characters, over limits.maxKnowledgeChars (${config.limits.maxKnowledgeChars})`,
+    );
+  }
+  return docs;
+}
+
 /**
- * Loads the knowledge folder and builds the system prompt once, then returns a
- * client that answers conversations.
+ * Loads the knowledge and builds the system prompt once, then returns a client
+ * that answers conversations.
  */
 export async function createChatClient(options: ChatClientOptions): Promise<ChatClient> {
   const { config, env, onUsage = logUsage } = options;
   const provider = options.provider ?? (await createProvider(env));
-  const system = buildSystemPrompt(config, await loadKnowledge(config.knowledgeDir));
+  const system = buildSystemPrompt(config, await resolveKnowledge(options));
   const maxTokens = config.limits.maxTokens;
 
   async function ask(messages: ChatMessage[], { lang }: AskOptions = {}): Promise<AskResult> {

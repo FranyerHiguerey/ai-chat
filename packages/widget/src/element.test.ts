@@ -192,4 +192,64 @@ describe('<ai-chat>', () => {
     defineAiChat('ai-chat-late');
     expect(text(el.shadowRoot?.querySelector('.starter'))).toBe('Early');
   });
+
+  describe('remote-config', () => {
+    const settings = (widget: unknown) => Response.json({ protocol: 1, widget });
+
+    it('loads name, greeting and starters from the endpoint on GET', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+        settings({
+          name: 'Nova',
+          greeting: { en: 'Hi from the dashboard' },
+          starters: ['Prices?'],
+        }),
+      );
+      const { $, root } = mount(
+        { 'remote-config': '', open: '', lang: 'en', endpoint: '/chat' },
+        fetch,
+      );
+
+      await vi.waitFor(() => expect(text($('.welcome__text'))).toBe('Hi from the dashboard'));
+      expect(text($('.welcome__title'))).toBe('Nova');
+      expect([...root.querySelectorAll('.starter')].map(text)).toEqual(['Prices?']);
+      expect(fetch).toHaveBeenCalledWith('/chat', expect.not.objectContaining({ method: 'POST' }));
+    });
+
+    it('lets markup and the config property win over the endpoint', async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          settings({ name: 'Remote', greeting: 'Remote hi', teaser: 'Remote teaser' }),
+        );
+      const { el, $ } = mount({ 'remote-config': '', open: '', name: 'Markup', lang: 'en' }, fetch);
+      el.config = { greeting: 'Config hi' };
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(text($('.welcome__title'))).toBe('Markup'));
+      expect(text($('.welcome__text'))).toBe('Config hi');
+    });
+
+    it('keeps working when the endpoint has no settings', async () => {
+      vi.spyOn(console, 'debug').mockImplementation(() => {});
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(Response.json({ error: {} }, { status: 405 }))
+        .mockResolvedValueOnce(sse(reply('Hola')));
+      const { el, $, root } = mount(
+        { 'remote-config': '', open: '', name: 'Acme', lang: 'es' },
+        fetch,
+      );
+
+      await vi.waitFor(() => expect(console.debug).toHaveBeenCalled());
+      expect(text($('.welcome__title'))).toBe('Acme');
+      el.send('Hola');
+      await vi.waitFor(() => expect(root.querySelectorAll(ANSWERS)).toHaveLength(1));
+    });
+
+    it('makes no request without the attribute', () => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      mount({ open: '' }, fetch);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+  });
 });

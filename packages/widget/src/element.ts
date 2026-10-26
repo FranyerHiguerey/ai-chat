@@ -53,7 +53,8 @@ const Base = (globalThis.HTMLElement ?? class {}) as typeof HTMLElement;
 /**
  * `<ai-chat>`: the chat launcher and panel. Attributes: `endpoint`, `name`,
  * `avatar`, `lang`, `theme` (auto | light | dark), `status`, `open`,
- * `max-chars` and `config` (JSON). The `config` property takes the same
+ * `max-chars`, `config` (JSON) and `remote-config` (read settings from the
+ * endpoint's GET; markup wins). The `config` property takes the same
  * object. See the package README.
  */
 export class AiChatElement extends Base {
@@ -67,12 +68,16 @@ export class AiChatElement extends Base {
     'open',
     'max-chars',
     'config',
+    'remote-config',
   ];
 
   /** Replaces `fetch` for chat requests (tests, custom transports). */
   declare fetch?: typeof fetch;
 
   private configValue: WidgetConfig = {};
+  /** Settings served by the endpoint (`remote-config`): the lowest-priority layer. */
+  private remote: RemoteSettings = {};
+  private remoteRequest = 0;
   private controller?: ChatController;
   private controllerEndpoint?: string;
   private unsubscribe?: () => void;
@@ -102,6 +107,40 @@ export class AiChatElement extends Base {
   set config(value: WidgetConfig | null | undefined) {
     this.configValue = value ?? {};
     this.render();
+  }
+
+  /** The `config` property over the endpoint's settings, key by key. */
+  private get widgetConfig(): WidgetConfig {
+    const { name: _name, avatar: _avatar, ...remote } = this.remote;
+    return { ...remote, ...this.configValue };
+  }
+
+  /**
+   * With `remote-config`, reads the widget settings the endpoint serves on GET,
+   * so dashboard edits show up without touching the page. Any failure leaves
+   * the widget as the markup configured it.
+   */
+  private loadRemote(): void {
+    const request = ++this.remoteRequest;
+    if (!this.hasAttribute('remote-config')) {
+      this.remote = {};
+      return;
+    }
+    const endpoint = this.getAttribute('endpoint') || '/api/chat';
+    void (async () => {
+      try {
+        const response = await (this.fetch ?? fetch)(endpoint, {
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = (await response.json()) as { widget?: unknown };
+        if (request !== this.remoteRequest) return; // a newer request superseded this one
+        this.remote = isObject(body.widget) ? (body.widget as RemoteSettings) : {};
+        this.render();
+      } catch (error) {
+        console.debug('[ai-chat] remote-config unavailable:', error);
+      }
+    })();
   }
 
   get isOpen(): boolean {
@@ -153,6 +192,7 @@ export class AiChatElement extends Base {
     if (name === 'config') this.configValue = parseConfig(value) ?? this.configValue;
     if (!this.controller) return; // connectedCallback renders everything.
     if (name === 'open') return this.syncOpen(!this.restoring);
+    if (name === 'remote-config') this.loadRemote();
     if (name === 'endpoint') this.setup();
     if (name === 'endpoint' || name === 'lang' || name === 'name' || name === 'avatar') {
       this.clearMessages();
@@ -174,8 +214,8 @@ export class AiChatElement extends Base {
     return {
       lang,
       strings,
-      name: this.getAttribute('name')?.trim() || strings.assistant,
-      avatar: this.getAttribute('avatar') || undefined,
+      name: this.getAttribute('name')?.trim() || this.remote.name || strings.assistant,
+      avatar: this.getAttribute('avatar') || this.remote.avatar || undefined,
     };
   }
 
@@ -190,6 +230,7 @@ export class AiChatElement extends Base {
     this.uiStore = sessionStore(`${key}:ui`);
     this.uiState = asUiState(this.uiStore.load());
     this.controllerEndpoint = endpoint;
+    this.loadRemote();
     this.controller = new ChatController({
       endpoint,
       lang: () => this.language,
@@ -365,7 +406,7 @@ export class AiChatElement extends Base {
     const ctx = this.context();
     const { strings, lang } = ctx;
     const ui = this.ui;
-    const config = this.configValue;
+    const config = this.widgetConfig;
 
     ui.launcher.setAttribute('aria-expanded', String(this.isOpen));
     ui.launcher.setAttribute('aria-label', this.isOpen ? strings.closeChat : strings.openChat);
@@ -502,11 +543,12 @@ export class AiChatElement extends Base {
   /** The site's "Talk to a person" link, if configured with a safe URL. */
   private handoff(): Handoff | undefined {
     const { strings, lang } = this.context();
-    const href = this.configValue.handoff && safeUrl(this.configValue.handoff.href);
+    const handoff = this.widgetConfig.handoff;
+    const href = handoff && safeUrl(handoff.href);
     if (!href) return undefined;
     return {
       href,
-      label: localize(this.configValue.handoff?.label, lang) ?? strings.talkToPerson,
+      label: localize(handoff?.label, lang) ?? strings.talkToPerson,
       newTab: href.startsWith('http') ? strings.newTab : undefined,
     };
   }
@@ -678,6 +720,13 @@ function parseConfig(value: string | null): WidgetConfig | undefined {
   }
   console.warn('[ai-chat] The config attribute must be a JSON object.');
   return undefined;
+}
+
+/** What the endpoint's GET returns under `widget`: the WidgetConfig plus name and avatar. */
+type RemoteSettings = WidgetConfig & { name?: string; avatar?: string };
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function asUiState(value: unknown): UiState {

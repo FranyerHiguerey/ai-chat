@@ -1,0 +1,21 @@
+{
+  "company": {
+    "name": "Acme Packaging",
+    "description": "Fictional maker of plastic containers, used to try the ai-chat dashboard.",
+    "website": "https://acme.example",
+    "contact": { "email": "hello@acme.example" },
+    "hours": "Monday to Friday, 9:00 to 17:00"
+  },
+  "languages": { "supported": ["es", "en"], "default": "en" },
+  "widget": {
+    "name": "Acme assistant",
+    "greeting": {
+      "en": "Hi! Ask me about our containers.",
+      "es": "¡Hola! Pregúntame por nuestros envases."
+    },
+    "starters": {
+      "en": ["What's the minimum order?", "Do you ship?"],
+      "es": ["¿Cuál es el pedido mínimo?", "¿Hacen envíos?"]
+    }
+  }
+}

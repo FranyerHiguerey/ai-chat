@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 export const LANGUAGES = ['es', 'en'] as const;
 export type Language = (typeof LANGUAGES)[number];
@@ -26,31 +27,93 @@ const whatsappNumber = z
 
 const languageSchema = z.enum(LANGUAGES);
 
-export const configSchema = z.object({
-  company: z.object({
-    name: z.string().min(1),
-    description: z.string().min(1),
-    website: z.string().url().optional(),
-    contact: z
-      .object({
-        email: z.string().email().optional(),
-        whatsapp: whatsappNumber.optional(),
-      })
-      .default({}),
-    hours: z.string().optional(),
-  }),
-  knowledgeDir: z.string().min(1),
-  languages: z
+const companySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  website: z.string().url().optional(),
+  contact: z
     .object({
-      supported: z.array(languageSchema).nonempty().default(['es', 'en']),
-      default: languageSchema.default('es'),
-      tone: z.string().optional(),
+      email: z.string().email().optional(),
+      whatsapp: whatsappNumber.optional(),
     })
-    .default({})
-    .refine((langs) => langs.supported.includes(langs.default), {
-      message: 'languages.default must be one of languages.supported',
-      path: ['default'],
-    }),
+    .default({}),
+  hours: z.string().optional(),
+});
+
+const languagesSchema = z
+  .object({
+    supported: z.array(languageSchema).nonempty().default(['es', 'en']),
+    default: languageSchema.default('es'),
+    tone: z.string().optional(),
+  })
+  .default({})
+  .refine((langs) => langs.supported.includes(langs.default), {
+    message: 'languages.default must be one of languages.supported',
+    path: ['default'],
+  });
+
+/** A text given once, or once per UI language. */
+const localized = z.union([
+  z.string().min(1),
+  z.object({ es: z.string().min(1).optional(), en: z.string().min(1).optional() }),
+]);
+
+const STARTER_ICONS = [
+  'chat',
+  'package',
+  'grid',
+  'truck',
+  'receipt',
+  'help',
+  'clock',
+  'pin',
+  'tag',
+  'mail',
+] as const;
+
+const starter = z.union([
+  z.string().min(1),
+  z.object({
+    label: z.string().min(1),
+    icon: z.enum(STARTER_ICONS).optional(),
+    message: z.string().min(1).optional(),
+  }),
+]);
+
+/** What the widget shows, served to it by `GET` on the endpoint. Mirrors the widget's `WidgetConfig`. */
+export const widgetSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    avatar: z.string().url().optional(),
+    greeting: localized.optional(),
+    starters: z
+      .union([
+        z.array(starter),
+        z.object({ es: z.array(starter).optional(), en: z.array(starter).optional() }),
+      ])
+      .optional(),
+    teaser: localized.optional(),
+    handoff: z.object({ href: z.string().min(1), label: localized.optional() }).optional(),
+  })
+  .default({});
+
+/**
+ * The part of the config a site owner may edit from a dashboard. Everything
+ * else (limits, origins, webhooks, the knowledge folder) is deploy config and
+ * stays in code, so a dashboard can never loosen the guardrails.
+ */
+export const siteSettingsSchema = z.object({
+  company: companySchema,
+  languages: languagesSchema,
+  widget: widgetSchema,
+});
+
+export const configSchema = z.object({
+  company: companySchema,
+  /** Folder of `.md` files. Optional when a source supplies the knowledge. */
+  knowledgeDir: z.string().min(1).optional(),
+  languages: languagesSchema,
+  widget: widgetSchema,
   features: z
     .object({
       leadCapture: z.object({ webhookUrl: z.string().url() }).optional(),
@@ -76,6 +139,8 @@ export const configSchema = z.object({
       maxTokens: z.number().int().positive().default(1024),
       /** Weighted tokens per UTC day across all visitors (see weightedTokens). 0 turns it off. */
       dailyTokenBudget: z.number().int().nonnegative().default(1_000_000),
+      /** All knowledge documents together. Every request sends them, so this bounds its cost. */
+      maxKnowledgeChars: z.number().int().positive().default(200_000),
     })
     .default({}),
   /** Sites allowed to embed the chat. Empty: only the endpoint's own origin. */
@@ -86,6 +151,51 @@ export const configSchema = z.object({
 export type ChatConfigInput = z.input<typeof configSchema>;
 /** The validated config with defaults applied. */
 export type ChatConfig = z.output<typeof configSchema>;
+/** What a dashboard edits and a source returns. */
+export type SiteSettingsInput = z.input<typeof siteSettingsSchema>;
+export type SiteSettings = z.output<typeof siteSettingsSchema>;
+export type WidgetSettings = z.output<typeof widgetSchema>;
+
+/**
+ * The site settings as JSON Schema (draft 7), for dashboards that generate or
+ * validate forms on their side. Server-side, validate with `validateSiteSettings`.
+ */
+export const siteSettingsJsonSchema = zodToJsonSchema(siteSettingsSchema, {
+  $refStrategy: 'none',
+  pipeStrategy: 'input',
+});
+
+export interface ValidationIssue {
+  /** Dotted field path, e.g. `company.contact.email`. Empty for the whole object. */
+  path: string;
+  message: string;
+}
+
+export type ValidationResult<T> = { ok: true; value: T } | { ok: false; issues: ValidationIssue[] };
+
+function toIssues(error: z.ZodError): ValidationIssue[] {
+  return error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }));
+}
+
+function validate<T>(
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  input: unknown,
+): ValidationResult<T> {
+  const result = schema.safeParse(input);
+  return result.success
+    ? { ok: true, value: result.data }
+    : { ok: false, issues: toIssues(result.error) };
+}
+
+/** Checks a dashboard's settings form without throwing: one issue per invalid field. */
+export function validateSiteSettings(input: unknown): ValidationResult<SiteSettings> {
+  return validate(siteSettingsSchema, input);
+}
+
+/** Like `defineConfig`, but returns the issues instead of throwing. */
+export function validateConfig(input: unknown): ValidationResult<ChatConfig> {
+  return validate(configSchema, input);
+}
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -95,8 +205,8 @@ export class ConfigError extends Error {
 }
 
 function formatIssues(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
+  return toIssues(error)
+    .map((issue) => `  - ${issue.path || '(root)'}: ${issue.message}`)
     .join('\n');
 }
 
