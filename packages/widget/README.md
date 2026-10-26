@@ -101,16 +101,19 @@ In dark mode, a custom `--chat-brand` is kept unless you also set `--chat-brand-
 
 ## Events
 
-| Event             | `detail`                        |
-| ----------------- | ------------------------------- |
-| `ai-chat:open`    |                                 |
-| `ai-chat:close`   |                                 |
-| `ai-chat:message` | `{ message }`, a finished reply |
-| `ai-chat:error`   | `{ code, message }`             |
+| Event             | `detail`                                                           |
+| ----------------- | ------------------------------------------------------------------ |
+| `ai-chat:open`    |                                                                    |
+| `ai-chat:close`   |                                                                    |
+| `ai-chat:message` | `{ message }`, a finished reply                                    |
+| `ai-chat:error`   | `{ code, message }`                                                |
+| `ai-chat:lead`    | `{}`: a lead form was delivered (no form data, safe for analytics) |
 
 Methods: `show()`, `hide()`, `toggle()`, `send(text)`, `reset()`.
 
 ## Behavior
+
+- **Rich replies:** under an answer the server can add reply chips (shown only under the latest reply; tapping one sends it), a "talk to our team" card with WhatsApp and email buttons, and an inline lead form with per-field validation, a sending state and a confirmation. They follow the theme tokens and dark mode; `--chat-whatsapp` sets the WhatsApp button color. See [docs/integration.md](../../docs/integration.md#reply-chips-handoff-and-leads) to turn them on.
 
 - **Persistence:** the conversation and open state live in `sessionStorage` per endpoint, so they survive navigation but not a closed tab. Without storage (privacy mode, sandboxed iframes) everything still works in memory.
 - **Stop:** the visitor keeps the partial reply. If nothing had arrived, the question goes back into the input.

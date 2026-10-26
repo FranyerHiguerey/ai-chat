@@ -51,6 +51,7 @@ export {
   type RequestContext,
 } from './handler.js';
 export { memoryStore, type GuardStore } from './guard/store.js';
+export { SIGNATURE_HEADER, signLead, verifyLeadSignature, type LeadPayload } from './lead.js';
 export { weightedTokens } from './guard/budget.js';
 export {
   defaultLogger,

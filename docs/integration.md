@@ -90,6 +90,29 @@ Express does not use web-standard requests; an adapter is planned for M9.
 
 See [packages/widget/README.md](../packages/widget/README.md) for attributes, theming tokens and methods, and [packages/react/README.md](../packages/react/README.md) for `<AiChat>`.
 
+### Reply chips, handoff and leads
+
+The model can add three things under an answer, each enabled by the deploy config:
+
+```ts
+defineConfig({
+  // ...
+  features: {
+    suggestions: true, // reply chips; on by default
+    handoff: { whatsapp: '+584121234567', email: 'ventas@acme.example' }, // "talk to our team" buttons
+    leadCapture: { webhookUrl: 'https://acme.example/api/leads' }, // inline contact form
+  },
+});
+```
+
+- **Chips** are follow-up questions the model suggests; tapping one sends it.
+- **Handoff** shows WhatsApp and email buttons when the visitor asks for a person or the knowledge has no answer. The links come from `features.handoff`, never from the model.
+- **Lead form** appears when the visitor wants a quote or to be contacted. The widget posts it to the chat endpoint, which sends it to `webhookUrl` signed with `AI_CHAT_LEAD_WEBHOOK_SECRET` (required when lead capture is on; the handler won't start without it). Verify the signature in your receiver with `verifyLeadSignature`: see [docs/protocol.md → Leads](protocol.md#leads).
+
+The model calls these as tools. Like any function call, a lead form or handoff is called first and the answer written once it returns, so those replies take a second model call. That call reads the cached prompt, so it adds roughly a third to that reply's cost; replies without a card cost the same as before. Chips come with the answer and need no extra call. A reply makes at most two model calls.
+
+**Privacy.** A lead includes the conversation transcript, so whatever the visitor typed reaches your webhook. Say so in your privacy notice, and store leads like any other customer data. The `ai-chat:lead` widget event and the server logs carry no form contents.
+
 ## Guardrails
 
 Every check runs before the model is called, so a rejected request costs nothing. In order:
@@ -243,11 +266,11 @@ A real dashboard brings its own authentication, storage and hosting.
 
 ## Roadmap
 
-| Milestone | Scope                                                                           |
-| --------- | ------------------------------------------------------------------------------- |
-| M5        | Guardrails: rate limit, origin/CORS, caps, usage logging (done)                 |
-| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin` (done) |
-| M7        | Tools and rich UI: suggestions, item cards and catalog, handoff card, lead form |
-| M8        | Visitor attachments (protocol v2)                                               |
-| M9        | Express adapter, Astro example, first real site integration                     |
-| M10       | Docs, CI, npm release                                                           |
+| Milestone | Scope                                                                                                    |
+| --------- | -------------------------------------------------------------------------------------------------------- |
+| M5        | Guardrails: rate limit, origin/CORS, caps, usage logging (done)                                          |
+| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin` (done)                          |
+| M7        | Tools and rich UI: M7a suggestions, handoff card, lead form (done); M7b catalog, search tool, item cards |
+| M8        | Visitor attachments (protocol v2)                                                                        |
+| M9        | Express adapter, Astro example, first real site integration                                              |
+| M10       | Docs, CI, npm release                                                                                    |

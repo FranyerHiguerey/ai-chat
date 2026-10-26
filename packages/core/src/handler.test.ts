@@ -3,6 +3,7 @@ import type { ChatEnv } from './config.js';
 import { ProviderError } from './errors.js';
 import { createChatHandler, type ChatHandlerOptions } from './handler.js';
 import { staticSource, type SourceData } from './source.js';
+import { verifyLeadSignature } from './lead.js';
 import { fakeProvider, testConfig, type FakeProviderOptions } from '../test/helpers.js';
 
 const env: ChatEnv = { provider: 'anthropic', apiKey: 'sk-test', model: 'claude-haiku-5-5' };
@@ -450,5 +451,82 @@ describe('createChatHandler with a source', () => {
       new Request('http://localhost/api/chat', { headers: { Origin: 'https://evil.example' } }),
     );
     expect(response.status).toBe(403);
+  });
+});
+
+describe('createChatHandler leads', () => {
+  const secret = 'whsec_test';
+  const leadEnv: ChatEnv = { ...env, leadWebhookSecret: secret };
+  const config = testConfig({
+    features: { leadCapture: { webhookUrl: 'https://hooks.acme.test/lead' } },
+  });
+  const lead = {
+    lead: { name: 'Ana', email: 'ana@example.com', message: 'Quiero cotizar' },
+    transcript: [{ role: 'user', content: 'Necesito 5.000 frascos' }],
+    page: 'https://acme.test/productos',
+    lang: 'es',
+  };
+
+  function leadSetup(webhook: typeof fetch, logger = vi.fn()) {
+    const { provider } = fakeProvider();
+    const handler = createChatHandler({
+      config,
+      env: leadEnv,
+      provider,
+      onUsage: vi.fn(),
+      webhookFetch: webhook,
+      logger,
+    });
+    return { handler, logger };
+  }
+
+  it('posts a signed lead with the transcript and the company name', async () => {
+    const webhook = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+    const { handler } = leadSetup(webhook);
+    const response = await handler(post(lead));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+
+    const [url, init] = webhook.mock.calls[0] ?? [];
+    expect(url).toBe('https://hooks.acme.test/lead');
+    const raw = String(init?.body);
+    const headers = init?.headers as Record<string, string>;
+    expect(verifyLeadSignature(raw, headers['X-AI-Chat-Signature'], secret)).toBe(true);
+    expect(JSON.parse(raw)).toMatchObject({
+      event: 'lead',
+      site: 'Acme Plastics',
+      lead: lead.lead,
+      transcript: lead.transcript,
+      page: lead.page,
+      lang: 'es',
+    });
+  });
+
+  it('answers 502 lead_failed when the webhook keeps failing, and logs no personal data', async () => {
+    const webhook = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 500 }));
+    const { handler, logger } = leadSetup(webhook);
+    const response = await handler(post(lead));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: { code: 'lead_failed' } });
+    const logs = JSON.stringify(logger.mock.calls);
+    expect(logs).toContain('"kind":"lead"');
+    expect(logs).not.toContain('ana@example.com');
+    expect(logs).not.toContain('5.000 frascos');
+  });
+
+  it('rejects invalid leads and leads when capture is off, without calling the webhook', async () => {
+    const webhook = vi.fn<typeof fetch>();
+    const { handler } = leadSetup(webhook);
+    expect((await handler(post({ lead: { name: 'Ana' } }))).status).toBe(400);
+    const { handler: off } = setup();
+    expect((await off(post(lead))).status).toBe(400);
+    expect(webhook).not.toHaveBeenCalled();
+  });
+
+  it('refuses to start with lead capture but no signing secret', () => {
+    const { provider } = fakeProvider();
+    expect(() => createChatHandler({ config, env, provider })).toThrow(
+      /AI_CHAT_LEAD_WEBHOOK_SECRET/,
+    );
   });
 });

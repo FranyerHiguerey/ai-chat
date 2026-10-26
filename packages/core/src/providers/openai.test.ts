@@ -65,6 +65,7 @@ describe('openai provider', () => {
     const { provider } = setup(fakeResponse());
     expect(await provider.complete({ system, messages, maxTokens: 1024 })).toEqual({
       text: 'Yes, nationwide.',
+      toolCalls: [],
       finishReason: 'stop',
       rawStopReason: 'completed',
       usage: {
@@ -151,6 +152,7 @@ describe('openai provider stream', () => {
         finishReason: 'stop',
         rawStopReason: 'completed',
         usage: expect.objectContaining({ provider: 'openai', cacheReadInputTokens: 1280 }),
+        replay: expect.any(Array),
       },
     ]);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ stream: true, store: false }), {
@@ -204,5 +206,91 @@ describe('openai provider stream', () => {
     await expect(collect(provider.stream({ system, messages, maxTokens: 1024 }))).rejects.toThrow(
       expect.objectContaining({ code: 'unavailable' }),
     );
+  });
+});
+
+describe('openai provider tools', () => {
+  const tools = [
+    {
+      name: 'show_lead_form',
+      description: 'Form',
+      parameters: {
+        type: 'object',
+        properties: { reason: { type: 'string' } },
+        required: ['reason'],
+        additionalProperties: false,
+      },
+    },
+  ];
+  const call = (args: string) => ({
+    type: 'function_call',
+    id: 'fc_1',
+    call_id: 'call_1',
+    name: 'show_lead_form',
+    arguments: args,
+    status: 'completed',
+  });
+  const withCalls = (...calls: unknown[]) =>
+    fakeResponse({ output: [...fakeResponse().output, ...calls] as FakeResponse['output'] });
+
+  it('sends strict function tools', async () => {
+    const { create, provider } = setup(withCalls());
+    await provider.complete({ system, messages, maxTokens: 1024, tools });
+    expect(create.mock.calls[0]?.[0].tools).toEqual([
+      {
+        type: 'function',
+        name: 'show_lead_form',
+        description: 'Form',
+        parameters: tools[0]?.parameters,
+        strict: true,
+      },
+    ]);
+  });
+
+  it('parses function call arguments and skips malformed ones', async () => {
+    const { provider } = setup(withCalls(call('{"reason":"Para cotizar"}'), call('{oops')));
+    const result = await provider.complete({ system, messages, maxTokens: 1024, tools });
+    expect(result.toolCalls).toEqual([
+      { id: 'call_1', name: 'show_lead_form', input: { reason: 'Para cotizar' } },
+    ]);
+  });
+
+  it('yields tool calls from the final response before done when streaming', async () => {
+    const final = withCalls(call('{"reason":"Para cotizar"}'));
+    const { provider } = streamSetup([
+      delta('Claro.'),
+      { type: 'response.completed', response: final },
+    ]);
+    const events = await collect(provider.stream({ system, messages, maxTokens: 1024, tools }));
+    expect(events.map((e) => e.type)).toEqual(['text', 'tool_call', 'done']);
+  });
+});
+
+describe('openai provider tool rounds', () => {
+  it('replays the output items with encrypted reasoning, then one output per call', async () => {
+    const { create, provider } = setup(fakeResponse());
+    const replay = [
+      { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'enc' },
+      {
+        type: 'function_call',
+        call_id: 'call_1',
+        name: 'show_lead_form',
+        arguments: '{"reason":"x"}',
+      },
+    ];
+    await provider.complete({
+      system,
+      messages,
+      maxTokens: 1024,
+      tools: [{ name: 'show_lead_form', description: 'Form', parameters: {} }],
+      rounds: [{ replay, results: [{ id: 'call_1', output: 'Shown' }] }],
+    });
+    const params = create.mock.calls[0]?.[0];
+    expect(params.include).toEqual(['reasoning.encrypted_content']);
+    expect(params.input).toEqual([
+      ...messages,
+      ...replay,
+      { type: 'function_call_output', call_id: 'call_1', output: 'Shown' },
+    ]);
   });
 });

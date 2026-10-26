@@ -5,6 +5,8 @@ import type { UsageReport } from '../types.js';
 export interface RequestLogEntry {
   event: 'ai-chat.request';
   id: string;
+  /** A chat turn, or a lead form submission. */
+  kind: 'chat' | 'lead';
   outcome: 'ok' | 'aborted' | 'error' | 'rejected';
   status: number;
   /** The error code sent to the browser, if any. */

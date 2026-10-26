@@ -1,12 +1,13 @@
 import type { ChatConfig, Language } from './config.js';
 import type { KnowledgeDoc } from './knowledge.js';
+import { toolInstructions, toolsFor } from './tools.js';
 import type { SystemPrompt } from './types.js';
 
 const LANGUAGE_NAMES: Record<Language, string> = { es: 'Spanish', en: 'English' };
 
 function instructions(config: ChatConfig): string {
   const { company, languages } = config;
-  const supported = languages.supported.map((lang) => LANGUAGE_NAMES[lang]).join(' and ');
+  const supported = languages.supported.map((lang) => LANGUAGE_NAMES[lang]).join(' or ');
   const fallback = LANGUAGE_NAMES[languages.default];
 
   const lines = [
@@ -22,6 +23,7 @@ function instructions(config: ChatConfig): string {
   if (languages.tone) {
     lines.push(`- Tone: ${languages.tone}`);
   }
+  lines.push(...toolInstructions(toolsFor(config)));
   return lines.join('\n');
 }
 

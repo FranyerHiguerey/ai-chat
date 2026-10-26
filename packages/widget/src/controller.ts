@@ -1,4 +1,10 @@
-import { streamChat, type ChatMessage } from '@franyerhiguerey/ai-chat-client';
+import {
+  streamChat,
+  submitLead,
+  type ChatMessage,
+  type LeadFields,
+  type SubmitLeadResult,
+} from '@franyerhiguerey/ai-chat-client';
 import type { Store } from './store.js';
 import {
   createMessage,
@@ -6,6 +12,7 @@ import {
   type ChatError,
   type Language,
   type Message,
+  type MessagePart,
   type Notice,
 } from './types.js';
 
@@ -27,6 +34,8 @@ export interface ControllerOptions {
   fetch?: typeof fetch;
   onMessage?: (message: Message) => void;
   onError?: (error: ChatError) => void;
+  /** A lead form was delivered. */
+  onLead?: (lead: LeadFields) => void;
 }
 
 const STORE_VERSION = 1;
@@ -51,6 +60,9 @@ export class ChatController {
   private current: ChatState;
   private readonly listeners = new Set<(state: ChatState) => void>();
   private run?: AbortController;
+  /** Cards and chips sent with the reply in progress; they join it when it's committed. */
+  private replyCards: MessagePart[] = [];
+  private replySuggestions?: string[];
 
   constructor(private readonly options: ControllerOptions) {
     const messages = restoreMessages(options.store?.load());
@@ -120,6 +132,40 @@ export class ChatController {
     return question ? textOf(question) : undefined;
   }
 
+  /**
+   * Sends a lead form shown under `messageId`, with the visible conversation as
+   * context. On success the form turns into its sent state, which is saved.
+   */
+  async submitLead(messageId: string, lead: LeadFields): Promise<SubmitLeadResult> {
+    const transcript: ChatMessage[] = this.current.messages
+      .map((message) => ({ role: message.role, content: textOf(message) }))
+      .filter((message) => message.content.trim() !== '');
+    const result = await submitLead({
+      endpoint: this.options.endpoint,
+      lead,
+      transcript,
+      page: globalThis.location?.href,
+      lang: this.options.lang(),
+      fetch: this.options.fetch,
+    });
+    if (result.ok) {
+      const messages = this.current.messages.map((message) =>
+        message.id !== messageId
+          ? message
+          : {
+              ...message,
+              parts: message.parts.map((part) =>
+                part.type === 'lead_form' ? { ...part, status: 'sent' as const } : part,
+              ),
+            },
+      );
+      this.update({ messages });
+      this.persist();
+      this.options.onLead?.(lead);
+    }
+    return result;
+  }
+
   reset(): void {
     this.run?.abort();
     this.run = undefined;
@@ -130,6 +176,8 @@ export class ChatController {
   private async request(): Promise<void> {
     const run = new AbortController();
     this.run = run;
+    this.replyCards = [];
+    this.replySuggestions = undefined;
     const messages: ChatMessage[] = this.current.messages.map((message) => ({
       role: message.role,
       content: textOf(message),
@@ -150,9 +198,19 @@ export class ChatController {
         case 'replace':
           this.update({ status: 'streaming', draft: event.text });
           break;
+        case 'suggestions':
+          this.replySuggestions = event.items;
+          break;
+        case 'card':
+          this.replyCards.push(
+            event.kind === 'handoff'
+              ? { type: 'handoff', channels: event.channels }
+              : { type: 'lead_form', reason: event.reason, status: 'open' },
+          );
+          break;
         case 'done':
           this.run = undefined;
-          if (this.current.draft.trim()) {
+          if (this.current.draft.trim() || this.replyCards.length > 0) {
             this.commit(
               this.current.draft,
               event.finishReason === 'max_tokens' ? 'cut_off' : undefined,
@@ -170,7 +228,15 @@ export class ChatController {
   }
 
   private commit(text: string, notice?: Notice): void {
-    const message = createMessage('assistant', text, notice);
+    const base = createMessage('assistant', text, notice);
+    const message: Message = {
+      ...base,
+      // A reply can be a card alone, with no text before it.
+      parts: [...(text.trim() ? base.parts : []), ...this.replyCards],
+      ...(this.replySuggestions?.length && { suggestions: this.replySuggestions }),
+    };
+    this.replyCards = [];
+    this.replySuggestions = undefined;
     this.update({
       messages: [...this.current.messages, message],
       status: 'idle',
@@ -209,6 +275,30 @@ function isMessage(value: unknown): value is Message {
     typeof message?.id === 'string' &&
     (message.role === 'user' || message.role === 'assistant') &&
     Array.isArray(message.parts) &&
-    message.parts.every((part) => part?.type === 'text' && typeof part.text === 'string')
+    message.parts.every(isPart) &&
+    (message.suggestions === undefined ||
+      (Array.isArray(message.suggestions) &&
+        message.suggestions.every((item) => typeof item === 'string')))
   );
+}
+
+function isPart(value: unknown): value is MessagePart {
+  const part = value as Record<string, unknown> | null;
+  switch (part?.type) {
+    case 'text':
+      return typeof part.text === 'string';
+    case 'handoff':
+      return (
+        Array.isArray(part.channels) &&
+        part.channels.every(
+          (channel: { type?: unknown; href?: unknown }) =>
+            (channel?.type === 'whatsapp' || channel?.type === 'email') &&
+            typeof channel.href === 'string',
+        )
+      );
+    case 'lead_form':
+      return typeof part.reason === 'string' && (part.status === 'open' || part.status === 'sent');
+    default:
+      return false;
+  }
 }

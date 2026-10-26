@@ -1,5 +1,6 @@
 import { createBuilder, type Build } from './build.js';
 import type { ChatClientOptions } from './client.js';
+import { ConfigError } from './config.js';
 import { ProviderError, toStreamErrorCode } from './errors.js';
 import { createBudget, weightedTokens } from './guard/budget.js';
 import { readJsonBody } from './guard/body.js';
@@ -10,6 +11,7 @@ import { createRateLimiter } from './guard/rate-limit.js';
 import { memoryStore, type GuardStore } from './guard/store.js';
 import { stringsFor } from './i18n.js';
 import { PROTOCOL_VERSION, type RequestErrorBody, type RequestErrorCode } from './protocol.js';
+import { deliverLead, isLeadBody, parseLead } from './lead.js';
 import { parseChatRequest } from './request.js';
 import { encodeComment, encodeEvent } from './sse.js';
 import type { ChatSource } from './source.js';
@@ -36,6 +38,8 @@ export interface ChatHandlerOptions extends ChatClientOptions {
    * `languages` and `widget`; `config` still sets everything else.
    */
   source?: ChatSource;
+  /** Replaces `fetch` for lead webhook calls (tests). */
+  webhookFetch?: typeof fetch;
 }
 
 export type ChatHandler = (request: Request, context?: RequestContext) => Promise<Response>;
@@ -64,6 +68,14 @@ const SSE_HEADERS = {
 export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
   const { config, heartbeatMs = 15_000, trustProxyHeader, logger = defaultLogger } = options;
   const { limits } = config;
+  const leadCapture = config.features.leadCapture;
+  const leadSecret = options.env.leadWebhookSecret;
+  if (leadCapture && !leadSecret) {
+    // Never send leads unsigned: the receiver couldn't tell them from forgeries.
+    throw new ConfigError(
+      'features.leadCapture needs AI_CHAT_LEAD_WEBHOOK_SECRET in the environment',
+    );
+  }
   const store = options.store ?? memoryStore();
   const limiter = createRateLimiter({ store, ...limits });
   const budget = createBudget({ store, dailyTokenBudget: limits.dailyTokenBudget });
@@ -99,6 +111,7 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
     const entry: RequestLogEntry = {
       event: 'ai-chat.request',
       id,
+      kind: 'chat',
       outcome: 'rejected',
       status: 0,
       code: null,
@@ -161,6 +174,18 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
           ? reject(413, 'message_too_long')
           : reject(400, 'invalid_request');
       }
+      if (isLeadBody(body.value)) {
+        entry.kind = 'lead';
+        const lead = await submitLead(body.value, id);
+        if (lead === 'invalid') return reject(400, 'invalid_request');
+        const lang = lead.lang ?? null;
+        if (!lead.delivered) {
+          log({ outcome: 'error', status: 502, code: 'lead_failed', lang });
+          return requestError(502, 'lead_failed', lead.lang);
+        }
+        log({ outcome: 'ok', status: 200, lang });
+        return Response.json({ ok: true }, { headers: cors });
+      }
       const parsed = parseChatRequest(body.value, builder.config);
       if (!parsed.ok) return reject(400, parsed.code, parsed.lang);
       const { messages, lang } = parsed.value;
@@ -194,6 +219,45 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
       if (!streaming) slot.release();
     }
   };
+
+  /** Validates a lead and posts it, signed, to the site's webhook. */
+  async function submitLead(
+    body: unknown,
+    id: string,
+  ): Promise<'invalid' | { delivered: boolean; lang?: string }> {
+    const lead =
+      leadCapture && leadSecret ? parseLead(body, limits.maxConversationChars) : undefined;
+    if (!lead || !leadCapture || !leadSecret) return 'invalid';
+
+    let site = builder.config;
+    try {
+      site = (await builder.current()).config;
+    } catch {
+      // The company name is all a lead needs; the base config has one.
+    }
+    const result = await deliverLead({
+      url: leadCapture.webhookUrl,
+      secret: leadSecret,
+      fetch: options.webhookFetch,
+      payload: {
+        event: 'lead',
+        id,
+        createdAt: new Date().toISOString(),
+        site: site.company.name,
+        ...lead,
+      },
+    });
+    if (!result.ok) {
+      logger({
+        event: 'ai-chat.error',
+        stage: 'lead',
+        message: result.status
+          ? `Lead webhook responded ${result.status}`
+          : 'Lead webhook unreachable',
+      });
+    }
+    return { delivered: result.ok, lang: lead.lang };
+  }
 
   /** The widget settings anyone may read. Cheap: no model call, so it isn't rate limited. */
   async function publicSettings(cors: Record<string, string>): Promise<Response> {

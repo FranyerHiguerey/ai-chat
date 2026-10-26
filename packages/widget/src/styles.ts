@@ -224,6 +224,34 @@ a { color: inherit; }
 .btn--primary:hover { filter: brightness(1.08); }
 .btn--link { color: var(--c-success); text-decoration: none; padding: 0 8px; }
 .btn--link:hover { text-decoration: underline; }
+
+/* Cards under a reply: handoff, lead form, sent confirmation */
+.card {
+  width: 100%; min-width: min(280px, 100%); padding: 14px;
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.card p { margin: 0; }
+.card__title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.card__text { color: var(--c-muted); }
+.card__hint { font-size: 13px; color: var(--c-muted); }
+.card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.card__status:empty { display: none; }
+.card__status--error { color: var(--c-danger); font-size: 14px; }
+.card--sent { flex-direction: row; align-items: flex-start; border-color: var(--c-success); }
+.card__icon { color: var(--c-success); display: grid; padding-top: 2px; }
+.btn--whatsapp { background: var(--chat-whatsapp, #0f7a40); color: #ffffff; }
+.btn--whatsapp:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: 0.6; cursor: progress; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 14px; font-weight: 500; }
+.field input, .field textarea {
+  width: 100%; padding: 9px 12px; border-radius: 10px; resize: vertical;
+  background: var(--c-surface-2); border: 1px solid var(--c-border);
+}
+.field input:focus, .field textarea:focus { outline: none; border-color: var(--c-brand); }
+.field [aria-invalid="true"] { border-color: var(--c-danger); }
+.field__error { font-size: 13px; color: var(--c-danger); }
 .composer textarea:disabled { cursor: not-allowed; }
 
 /* Chips, input and footer */

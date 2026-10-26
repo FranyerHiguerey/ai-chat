@@ -57,6 +57,7 @@ describe('anthropic provider', () => {
     const { provider } = setup(fakeResponse());
     expect(await provider.complete({ system, messages, maxTokens: 1024 })).toEqual({
       text: 'Hola, claro.',
+      toolCalls: [],
       finishReason: 'stop',
       rawStopReason: 'end_turn',
       usage: {
@@ -124,6 +125,7 @@ describe('anthropic provider stream', () => {
         finishReason: 'stop',
         rawStopReason: 'end_turn',
         usage: expect.objectContaining({ provider: 'anthropic', cacheReadInputTokens: 900 }),
+        replay: expect.any(Array),
       },
     ]);
     expect(stream).toHaveBeenCalledWith(
@@ -144,5 +146,88 @@ describe('anthropic provider stream', () => {
     await expect(collect(provider.stream({ system, messages, maxTokens: 1024 }))).rejects.toThrow(
       expect.objectContaining({ name: 'ProviderError', code: 'rate_limited' }),
     );
+  });
+});
+
+describe('anthropic provider tools', () => {
+  const tools = [
+    {
+      name: 'suggest_replies',
+      description: 'Chips',
+      parameters: {
+        type: 'object',
+        properties: { replies: { type: 'array', items: { type: 'string' } } },
+        required: ['replies'],
+        additionalProperties: false,
+      },
+    },
+  ];
+  const withTool = fakeResponse({
+    content: [
+      { type: 'text', text: 'Sí.', citations: null },
+      {
+        type: 'tool_use',
+        id: 'toolu_1',
+        name: 'suggest_replies',
+        input: { replies: ['¿Precios?'] },
+      },
+    ] as Anthropic.Message['content'],
+    stop_reason: 'tool_use',
+  });
+
+  it('sends strict tools and leaves them out when there are none', async () => {
+    const { create, provider } = setup(withTool);
+    await provider.complete({ system, messages, maxTokens: 1024, tools });
+    expect(create.mock.calls[0]?.[0].tools).toEqual([
+      {
+        name: 'suggest_replies',
+        description: 'Chips',
+        input_schema: tools[0]?.parameters,
+        strict: true,
+      },
+    ]);
+    await provider.complete({ system, messages, maxTokens: 1024 });
+    expect(create.mock.calls[1]?.[0]).not.toHaveProperty('tools');
+  });
+
+  it('returns tool calls and treats a tool_use stop as a normal finish', async () => {
+    const { provider } = setup(withTool);
+    const result = await provider.complete({ system, messages, maxTokens: 1024, tools });
+    expect(result.text).toBe('Sí.');
+    expect(result.finishReason).toBe('stop');
+    expect(result.toolCalls).toEqual([
+      { id: 'toolu_1', name: 'suggest_replies', input: { replies: ['¿Precios?'] } },
+    ]);
+  });
+
+  it('yields tool calls after the text and before done when streaming', async () => {
+    const { provider } = streamSetup(withTool);
+    const events = await collect(provider.stream({ system, messages, maxTokens: 1024, tools }));
+    expect(events.map((e) => e.type)).toEqual(['text', 'text', 'tool_call', 'done']);
+    expect(events[2]).toMatchObject({ type: 'tool_call', name: 'suggest_replies' });
+  });
+});
+
+describe('anthropic provider tool rounds', () => {
+  it('replays a round as the assistant content, then all results in one user turn', async () => {
+    const { create, provider } = setup(fakeResponse());
+    const replay = [
+      { type: 'thinking', thinking: '', signature: 'sig' },
+      { type: 'tool_use', id: 'toolu_1', name: 'show_lead_form', input: { reason: 'x' } },
+    ];
+    await provider.complete({
+      system,
+      messages,
+      maxTokens: 1024,
+      rounds: [{ replay, results: [{ id: 'toolu_1', output: 'Shown' }] }],
+    });
+    expect(create.mock.calls[0]?.[0].messages).toEqual([
+      ...messages,
+      { role: 'assistant', content: replay },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'Shown' }],
+      },
+    ]);
   });
 });

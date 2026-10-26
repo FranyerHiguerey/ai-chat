@@ -38,7 +38,7 @@ Rejected requests never reach the model, so they cost nothing. They return JSON,
 | 400    | `message_too_long`   | A message is over `limits.maxMessageChars`, or all messages together over `maxConversationChars`  |
 | 400    | `too_many_turns`     | More than `limits.maxTurns` user turns: start a new conversation                                  |
 | 403    | `forbidden_origin`   | The page's `Origin` is not the endpoint's own and not in `allowedOrigins`                         |
-| 405    | `method_not_allowed` | Not a POST                                                                                        |
+| 405    | `method_not_allowed` | Not a GET or POST                                                                                 |
 | 413    | `message_too_long`   | The body is over `limits.maxBodyBytes`                                                            |
 | 429    | `rate_limited`       | Too many requests from this visitor or from everyone. `Retry-After` says how many seconds to wait |
 | 500    | `internal`           | The server is misconfigured (for example, the knowledge folder is missing)                        |
@@ -75,13 +75,15 @@ event: done
 data: {"finishReason":"stop"}
 ```
 
-| Event     | Data                                                           | What the UI should do                                                                                                      |
-| --------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `start`   | `id`, `protocol`                                               | Sent right away. Show the typing indicator                                                                                 |
-| `delta`   | `text`                                                         | Append to the reply. The text is **markdown**, so render it safely (M3)                                                    |
-| `replace` | `text`                                                         | Throw away everything streamed so far and show this text. Sent after a refusal: the partial answer must not stay on screen |
-| `done`    | `finishReason`: `stop`, `max_tokens` or `refusal`              | The reply is complete. On `max_tokens` it was cut off by the length limit                                                  |
-| `error`   | `code`: `rate_limited`, `unavailable` or `internal`; `message` | The reply failed. Show `message` (already localized) and offer Retry                                                       |
+| Event         | Data                                                           | What the UI should do                                                                                                      |
+| ------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `start`       | `id`, `protocol`                                               | Sent right away. Show the typing indicator                                                                                 |
+| `delta`       | `text`                                                         | Append to the reply. The text is **markdown**, so render it safely (M3)                                                    |
+| `replace`     | `text`                                                         | Throw away everything streamed so far and show this text. Sent after a refusal: the partial answer must not stay on screen |
+| `suggestions` | `items`: up to 3 strings                                       | Reply chips. Show them under this reply while it's the latest; tapping one sends it                                        |
+| `card`        | `kind`, plus fields per kind (below)                           | Rich content under this reply. Arrives after the text, just before `done`                                                  |
+| `done`        | `finishReason`: `stop`, `max_tokens` or `refusal`              | The reply is complete. On `max_tokens` it was cut off by the length limit                                                  |
+| `error`       | `code`: `rate_limited`, `unavailable` or `internal`; `message` | The reply failed. Show `message` (already localized) and offer Retry                                                       |
 
 The stream also carries `: ping` comment lines every 15 seconds so proxies don't close an idle connection. SSE parsers ignore them.
 
@@ -114,14 +116,83 @@ Accept: application/json
 
 Every `widget` field is optional (`name`, `avatar`, `greeting`, `starters`, `teaser`, `handoff`); texts are a string or `{ es, en }`. The response is cacheable for 60 seconds. The widget reads it when it has the `remote-config` attribute.
 
+## Cards
+
+A `card` event carries one of these, told apart by `kind`. The server builds every link from the site's config; the model never writes them.
+
+| `kind`      | Fields                                                    | What to show                                                                                          |
+| ----------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `handoff`   | `channels`: `[{ "type": "whatsapp" \| "email", "href" }]` | Buttons to reach the team. `href` is a `https://wa.me/…` or `mailto:` link with the request prefilled |
+| `lead_form` | `reason`: why it's shown, in the visitor's language       | A contact form (name, email or phone, message), sent as a lead (below)                                |
+
+```
+event: card
+data: {"kind":"handoff","channels":[{"type":"whatsapp","href":"https://wa.me/584121234567?text=Quiero%20cotizar"}]}
+```
+
+Cards and suggestions are dropped when the reply ends in a refusal.
+
+## Leads
+
+The lead form is sent to the same endpoint. A `lead` key tells it apart from a chat turn, and it goes through the same origin check, rate limit and size cap.
+
+```http
+POST /api/chat
+Content-Type: application/json
+
+{
+  "lead": { "name": "Ana", "email": "ana@example.com", "phone": "", "message": "Quiero 5.000 frascos" },
+  "transcript": [{ "role": "user", "content": "¿Hacen frascos de 250 ml?" }],
+  "page": "https://acme.example/productos",
+  "lang": "es"
+}
+```
+
+`name` is required, plus an `email` or a `phone`; empty fields count as missing. The transcript is optional and capped at `limits.maxConversationChars` (the most recent messages are kept).
+
+| Status | Body              | Meaning                                                                            |
+| ------ | ----------------- | ---------------------------------------------------------------------------------- |
+| 200    | `{ "ok": true }`  | Delivered to the site's webhook                                                    |
+| 400    | `invalid_request` | Missing or invalid fields, or lead capture is off                                  |
+| 502    | `lead_failed`     | The webhook failed twice (one retry); show `message` and let the visitor try again |
+
+### The webhook
+
+The server posts this JSON to `features.leadCapture.webhookUrl`:
+
+```json
+{
+  "event": "lead",
+  "id": "5b0c…",
+  "createdAt": "2026-10-26T12:00:00.000Z",
+  "site": "Acme",
+  "lead": { "name": "Ana", "email": "ana@example.com", "message": "Quiero 5.000 frascos" },
+  "transcript": [{ "role": "user", "content": "¿Hacen frascos de 250 ml?" }],
+  "page": "https://acme.example/productos",
+  "lang": "es"
+}
+```
+
+It carries `X-AI-Chat-Signature: t=<unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `"<t>.<raw body>"` with `AI_CHAT_LEAD_WEBHOOK_SECRET`. Verify it before trusting the lead, using the raw body as received:
+
+```ts
+import { SIGNATURE_HEADER, verifyLeadSignature } from '@franyerhiguerey/ai-chat-core';
+
+const raw = await request.text();
+if (
+  !verifyLeadSignature(
+    raw,
+    request.headers.get(SIGNATURE_HEADER),
+    process.env.AI_CHAT_LEAD_WEBHOOK_SECRET!,
+  )
+) {
+  return new Response('Bad signature', { status: 401 });
+}
+const lead = JSON.parse(raw);
+```
+
+Signatures older than 5 minutes are rejected (`toleranceSec`), which stops replays. Answer with any 2xx within 10 seconds; a network error or 5xx is retried once, a 4xx is not.
+
 ## Forward compatibility
 
-Clients must ignore events they don't recognize. New features add new events and never change existing ones; a breaking change would raise `protocol` in `start`.
-
-Planned for M4 (not sent yet):
-
-| Event         | Data                                                                 | Purpose                                                        |
-| ------------- | -------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `suggestions` | `items: string[]`                                                    | Reply chips after an answer                                    |
-| `card`        | `kind: "product" \| "whatsapp" \| "lead_form"`, plus fields per kind | Product cards, the WhatsApp handoff card, the inline lead form |
-| `lead_saved`  | `ok`                                                                 | The lead form was delivered to the site's webhook              |
+Clients must ignore events they don't recognize, and cards whose `kind` they don't know. New features add new events and never change existing ones; a breaking change would raise `protocol` in `start`.

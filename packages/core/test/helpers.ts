@@ -2,7 +2,13 @@ import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
 import { defineConfig, type ChatConfigInput } from '../src/config.js';
 import { ProviderError } from '../src/errors.js';
-import type { ChatProvider, CompletionRequest, FinishReason, UsageReport } from '../src/types.js';
+import type {
+  ChatProvider,
+  CompletionRequest,
+  FinishReason,
+  ToolCall,
+  UsageReport,
+} from '../src/types.js';
 
 export const FIXTURE_KNOWLEDGE = fileURLToPath(new URL('./fixtures/knowledge', import.meta.url));
 
@@ -35,11 +41,16 @@ export interface FakeProviderOptions {
   error?: unknown;
   /** Waits for the abort signal after the chunks (to test Stop). */
   hang?: boolean;
+  /** Tool calls yielded after the chunks, before `done`. */
+  toolCalls?: ToolCall[];
+  /** Per-call overrides: call N uses rounds[N] (tool loops). Falls back to the options above. */
+  rounds?: Omit<FakeProviderOptions, 'rounds'>[];
 }
 
 /** A provider that streams canned output and records each call. */
 export function fakeProvider(options: FakeProviderOptions = {}) {
-  const { chunks = ['Hola, ', 'claro.'], finishReason = 'stop', error, hang } = options;
+  // complete() uses these; stream() reads them per round.
+  const { chunks = ['Hola, ', 'claro.'], finishReason = 'stop' } = options;
   const calls: { request: CompletionRequest; signal?: AbortSignal }[] = [];
 
   const provider: ChatProvider = {
@@ -50,6 +61,17 @@ export function fakeProvider(options: FakeProviderOptions = {}) {
       return { text: chunks.join(''), finishReason, rawStopReason: finishReason, usage: USAGE };
     }),
     async *stream(request, { signal } = {}) {
+      const round = options.rounds?.[calls.length] ?? {};
+      const {
+        chunks = ['Hola, ', 'claro.'],
+        finishReason = 'stop',
+        error,
+        hang,
+        toolCalls = [],
+      } = {
+        ...options,
+        ...round,
+      };
       calls.push({ request, signal });
       for (const text of chunks) yield { type: 'text', text };
       if (hang) {
@@ -61,7 +83,14 @@ export function fakeProvider(options: FakeProviderOptions = {}) {
         throw new ProviderError('aborted', 'Request aborted');
       }
       if (error) throw error;
-      yield { type: 'done', finishReason, rawStopReason: finishReason, usage: USAGE };
+      for (const call of toolCalls) yield { type: 'tool_call', ...call };
+      yield {
+        type: 'done',
+        finishReason,
+        rawStopReason: finishReason,
+        usage: USAGE,
+        replay: [`round-${calls.length}`],
+      };
     },
   };
   return { provider, calls };

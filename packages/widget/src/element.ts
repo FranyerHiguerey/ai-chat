@@ -38,6 +38,8 @@ export interface AiChatEventMap {
   'ai-chat:close': CustomEvent<void>;
   'ai-chat:message': CustomEvent<{ message: Message }>;
   'ai-chat:error': CustomEvent<ChatError>;
+  /** A lead form was delivered. Carries no form data. */
+  'ai-chat:lead': CustomEvent<Record<string, never>>;
 }
 
 interface UiState {
@@ -85,7 +87,8 @@ export class AiChatElement extends Base {
   private uiState: UiState = {};
   private lastState?: ChatState;
   private readonly ui: Ui;
-  private readonly rendered = new Map<string, HTMLElement>();
+  /** Each message's node, and the message it was built from: a changed message is rebuilt. */
+  private readonly rendered = new Map<string, { node: HTMLElement; message: Message }>();
   private draft?: { root: HTMLElement; bubble: HTMLElement };
   private frame = 0;
   private stick = true;
@@ -216,6 +219,10 @@ export class AiChatElement extends Base {
       strings,
       name: this.getAttribute('name')?.trim() || this.remote.name || strings.assistant,
       avatar: this.getAttribute('avatar') || this.remote.avatar || undefined,
+      submitLead: (messageId, lead) =>
+        this.controller
+          ? this.controller.submitLead(messageId, lead)
+          : Promise.resolve({ ok: false, code: 'network', message: '' }),
     };
   }
 
@@ -241,6 +248,11 @@ export class AiChatElement extends Base {
         this.emit('ai-chat:message', { message });
       },
       onError: (error) => this.emit('ai-chat:error', error),
+      // No form contents in the event: it's for analytics, which shouldn't see personal data.
+      onLead: () => {
+        this.ui.announcer.textContent = STRINGS[this.language].lead.sentTitle;
+        this.emit('ai-chat:lead', {});
+      },
     });
     this.lastState = this.controller.state;
     this.unsubscribe = this.controller.subscribe((state) => this.onState(state));
@@ -472,17 +484,20 @@ export class AiChatElement extends Base {
     if (messages.length > 0) ui.teaser.hidden = true;
 
     const ids = new Set(messages.map((message) => message.id));
-    for (const [id, node] of this.rendered) {
+    for (const [id, { node }] of this.rendered) {
       if (!ids.has(id)) {
         node.remove();
         this.rendered.delete(id);
       }
     }
     for (const message of messages) {
-      if (this.rendered.has(message.id)) continue;
+      const existing = this.rendered.get(message.id);
+      if (existing?.message === message) continue;
+      // New, or changed (a lead form was sent): build it, in place if it existed.
       const node = messageView(message, ctx);
-      ui.log.insertBefore(node, ui.draftSlot);
-      this.rendered.set(message.id, node);
+      if (existing) existing.node.replaceWith(node);
+      else ui.log.insertBefore(node, ui.draftSlot);
+      this.rendered.set(message.id, { node, message });
     }
 
     if (status === 'idle') {
@@ -504,8 +519,12 @@ export class AiChatElement extends Base {
     ui.input.placeholder = locked ? ctx.strings.limitReached : ctx.strings.placeholder;
     ui.input.setAttribute('aria-label', ui.input.placeholder);
 
-    // Reply chips arrive with the M4 `suggestions` event.
-    ui.chips.replaceChildren(...chipsView([], (text) => this.send(text)));
+    // Chips belong to the latest reply and go away once the visitor moves on.
+    const last = messages.at(-1);
+    const chips =
+      status === 'idle' && !error && last?.role === 'assistant' ? (last.suggestions ?? []) : [];
+    ui.chips.setAttribute('aria-label', ctx.strings.suggestions);
+    ui.chips.replaceChildren(...chipsView(chips, (text) => this.send(text)));
     ui.chips.hidden = ui.chips.childElementCount === 0;
 
     this.renderSendButton();
@@ -559,7 +578,7 @@ export class AiChatElement extends Base {
   }
 
   private clearMessages(): void {
-    for (const node of this.rendered.values()) node.remove();
+    for (const { node } of this.rendered.values()) node.remove();
     this.rendered.clear();
     this.draft = undefined;
   }

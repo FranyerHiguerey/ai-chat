@@ -26,6 +26,22 @@ export interface UiStrings {
   limitReached: string;
   /** Failures the browser detects itself; server errors arrive already localized. */
   errors: { network: string; bad_response: string };
+  suggestions: string;
+  handoff: { title: string; whatsapp: string; email: string };
+  lead: {
+    title: string;
+    name: string;
+    email: string;
+    phone: string;
+    message: string;
+    optional: string;
+    consent: string;
+    submit: string;
+    sending: string;
+    sentTitle: string;
+    sentText: string;
+    invalid: { name: string; contact: string; email: string; phone: string };
+  };
 }
 
 /** Fixed UI text. Model replies follow the visitor's language, not this. */
@@ -61,6 +77,27 @@ export const STRINGS: Record<Language, UiStrings> = {
       network: 'Se perdió la conexión. Revisa tu internet e inténtalo de nuevo.',
       bad_response: 'Algo salió mal. Inténtalo de nuevo en unos segundos.',
     },
+    suggestions: 'Preguntas sugeridas',
+    handoff: { title: 'Habla con nuestro equipo', whatsapp: 'WhatsApp', email: 'Correo' },
+    lead: {
+      title: 'Déjanos tus datos',
+      name: 'Nombre',
+      email: 'Correo',
+      phone: 'Teléfono',
+      message: 'Mensaje',
+      optional: '(opcional)',
+      consent: 'Usaremos tus datos solo para responder a tu consulta.',
+      submit: 'Enviar',
+      sending: 'Enviando…',
+      sentTitle: '¡Recibido!',
+      sentText: 'Nuestro equipo te contactará pronto.',
+      invalid: {
+        name: 'Escribe tu nombre.',
+        contact: 'Déjanos un correo o un teléfono.',
+        email: 'Revisa el correo.',
+        phone: 'Revisa el teléfono.',
+      },
+    },
   },
   en: {
     assistant: 'Assistant',
@@ -92,6 +129,27 @@ export const STRINGS: Record<Language, UiStrings> = {
     errors: {
       network: 'The connection was lost. Check your internet and try again.',
       bad_response: 'Something went wrong. Please try again in a few seconds.',
+    },
+    suggestions: 'Suggested questions',
+    handoff: { title: 'Talk to our team', whatsapp: 'WhatsApp', email: 'Email' },
+    lead: {
+      title: 'Leave us your details',
+      name: 'Name',
+      email: 'Email',
+      phone: 'Phone',
+      message: 'Message',
+      optional: '(optional)',
+      consent: "We'll only use your details to answer your request.",
+      submit: 'Send',
+      sending: 'Sending…',
+      sentTitle: 'Got it!',
+      sentText: 'Our team will contact you soon.',
+      invalid: {
+        name: 'Please enter your name.',
+        contact: 'Leave an email or a phone number.',
+        email: 'Check the email address.',
+        phone: 'Check the phone number.',
+      },
     },
   },
 };

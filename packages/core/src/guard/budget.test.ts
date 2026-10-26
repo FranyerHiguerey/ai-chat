@@ -41,3 +41,10 @@ describe('createBudget', () => {
     expect(await budget.exhausted()).toBe(false);
   });
 });
+
+describe('weightedTokens rounding', () => {
+  it('keeps one decimal, without float noise', () => {
+    const usage = { ...USAGE, inputTokens: 92, cacheReadInputTokens: 3674, outputTokens: 104 };
+    expect(weightedTokens(usage)).toBe(563.4);
+  });
+});

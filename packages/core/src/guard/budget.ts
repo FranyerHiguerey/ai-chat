@@ -8,12 +8,13 @@ const DAY_MS = 86_400_000;
  * about a tenth of normal input on both providers, everything else counts in full.
  */
 export function weightedTokens(usage: UsageReport): number {
-  return (
+  // Rounded so logs show 563.4, not 563.4000000000001.
+  const weighted =
     usage.inputTokens +
     usage.cacheCreationInputTokens +
     usage.outputTokens +
-    usage.cacheReadInputTokens * 0.1
-  );
+    usage.cacheReadInputTokens * 0.1;
+  return Math.round(weighted * 10) / 10;
 }
 
 export interface BudgetOptions {

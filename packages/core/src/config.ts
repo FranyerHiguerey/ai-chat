@@ -116,6 +116,9 @@ export const configSchema = z.object({
   widget: widgetSchema,
   features: z
     .object({
+      /** Reply chips after answers. */
+      suggestions: z.boolean().default(true),
+      /** Sends lead form submissions to this URL, signed with AI_CHAT_LEAD_WEBHOOK_SECRET. */
       leadCapture: z.object({ webhookUrl: z.string().url() }).optional(),
       handoff: z
         .object({

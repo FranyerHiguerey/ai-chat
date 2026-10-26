@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { openStream, reply, sse } from '../test/sse.js';
+import { frame, openStream, reply, sse } from '../test/sse.js';
 import type { AiChatElement } from './element.js';
 import './index.js';
 
@@ -250,6 +250,118 @@ describe('<ai-chat>', () => {
       const fetch = vi.fn<typeof globalThis.fetch>();
       mount({ open: '' }, fetch);
       expect(fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rich replies', () => {
+    const rich = (...frames: string[]) =>
+      sse(
+        [
+          frame('start', { id: '1', protocol: 1 }),
+          ...frames,
+          frame('done', { finishReason: 'stop' }),
+        ].join(''),
+      );
+    const fill = (root: ShadowRoot, name: string, value: string) => {
+      const input = root.querySelector<HTMLInputElement>(`.card--lead [name="${name}"]`)!;
+      input.value = value;
+    };
+
+    it('shows chips under the latest reply and sends the tapped one', async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(
+          rich(
+            frame('delta', { text: 'Sí.' }),
+            frame('suggestions', { items: ['¿Precios?', '¿Plazos?'] }),
+          ),
+        )
+        .mockResolvedValueOnce(sse(reply('Depende.')));
+      const { el, $, root } = mount({ open: '', lang: 'es' }, fetch);
+      el.send('¿Hacen envíos?');
+      await vi.waitFor(() => expect(root.querySelectorAll('.chip')).toHaveLength(2));
+      expect($('.chips').getAttribute('aria-label')).toBe('Preguntas sugeridas');
+
+      $<HTMLButtonElement>('.chip').click();
+      await vi.waitFor(() => expect(root.querySelectorAll(ANSWERS)).toHaveLength(2));
+      expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body)).messages.at(-1).content).toBe(
+        '¿Precios?',
+      );
+      expect($('.chips').hidden).toBe(true);
+    });
+
+    it('renders handoff buttons with safe links only', async () => {
+      const card = {
+        kind: 'handoff',
+        channels: [
+          { type: 'whatsapp', href: 'https://wa.me/584121234567?text=Hola' },
+          { type: 'email', href: 'javascript:alert(1)' },
+        ],
+      };
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          rich(frame('delta', { text: 'Te paso con el equipo.' }), frame('card', card)),
+        );
+      const { el, root } = mount({ open: '', lang: 'es' }, fetch);
+      el.send('Quiero hablar con alguien');
+      await vi.waitFor(() => expect(root.querySelector('.card--handoff')).not.toBeNull());
+      const links = [...root.querySelectorAll<HTMLAnchorElement>('.card--handoff a')];
+      expect(links.map((a) => a.href)).toEqual(['https://wa.me/584121234567?text=Hola']);
+      expect(links[0]?.rel).toBe('noopener noreferrer');
+    });
+
+    it('validates the lead form, sends it and shows the confirmation', async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(
+          rich(
+            frame('delta', { text: 'Claro.' }),
+            frame('card', { kind: 'lead_form', reason: 'Para enviarte la cotización.' }),
+          ),
+        )
+        .mockResolvedValueOnce(Response.json({ ok: true }));
+      const { el, $, root } = mount({ open: '', lang: 'es' }, fetch);
+      const onLead = vi.fn();
+      el.addEventListener('ai-chat:lead', onLead);
+      el.send('Quiero cotizar');
+      await vi.waitFor(() => expect(root.querySelector('.card--lead')).not.toBeNull());
+      expect(text($('.card--lead .card__text'))).toBe('Para enviarte la cotización.');
+
+      $<HTMLButtonElement>('.card--lead button[type="submit"]').click();
+      expect($('.card--lead [name="name"]').getAttribute('aria-invalid')).toBe('true');
+      expect(text($('.card--lead [name="email"] + .field__error'))).toBe(
+        'Déjanos un correo o un teléfono.',
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      fill(root, 'name', 'Ana');
+      fill(root, 'email', 'ana@example.com');
+      $<HTMLButtonElement>('.card--lead button[type="submit"]').click();
+      await vi.waitFor(() => expect(root.querySelector('.card--sent')).not.toBeNull());
+      expect(root.querySelector('.card--lead')).toBeNull();
+      expect(onLead).toHaveBeenCalledTimes(1);
+      expect((onLead.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({});
+    });
+
+    it('keeps the form and shows the error when sending fails', async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(rich(frame('card', { kind: 'lead_form', reason: '' })))
+        .mockResolvedValueOnce(
+          Response.json(
+            { error: { code: 'lead_failed', message: 'No pudimos enviar tus datos.' } },
+            { status: 502 },
+          ),
+        );
+      const { el, $, root } = mount({ open: '', lang: 'es' }, fetch);
+      el.send('Cotizar');
+      await vi.waitFor(() => expect(root.querySelector('.card--lead')).not.toBeNull());
+      fill(root, 'name', 'Ana');
+      fill(root, 'phone', '+58 412 1234567');
+      $<HTMLButtonElement>('.card--lead button[type="submit"]').click();
+      await vi.waitFor(() => expect(text($('.card__status'))).toBe('No pudimos enviar tus datos.'));
+      expect($<HTMLButtonElement>('.card--lead button[type="submit"]').disabled).toBe(false);
     });
   });
 });

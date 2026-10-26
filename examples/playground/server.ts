@@ -2,6 +2,7 @@
  * A bare playground for the ai-chat stream. Serves one page, the browser
  * client, and the chat endpoint. Run with `pnpm playground` from the repo root.
  */
+import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,8 @@ import {
   createChatHandler,
   defineConfig,
   loadEnv,
+  SIGNATURE_HEADER,
+  verifyLeadSignature,
   type ChatEnv,
 } from '@franyerhiguerey/ai-chat-core';
 import { handleMockChat } from './mock.js';
@@ -30,7 +33,15 @@ try {
   console.warn(`${(error as Error).message}\nNo live chat: open /widget?mock=1 to try the widget.`);
 }
 
-const handleChat = env ? createLiveHandler(env) : noKeyHandler;
+const port = Number(process.env.PORT ?? 4321);
+
+// Leads go to the playground's own test receiver below. Without a secret in
+// .env, a throwaway one is made per run: leads are always signed.
+const leadSecret = env?.leadWebhookSecret ?? randomBytes(24).toString('hex');
+
+const handleChat = env
+  ? createLiveHandler({ ...env, leadWebhookSecret: leadSecret })
+  : noKeyHandler;
 
 function createLiveHandler(env: ChatEnv) {
   return createChatHandler({
@@ -45,9 +56,28 @@ function createLiveHandler(env: ChatEnv) {
       },
       knowledgeDir: path.join(here, 'knowledge'),
       languages: { supported: ['es', 'en'], default: 'es', tone: 'Cercano, claro y profesional.' },
+      features: {
+        handoff: { whatsapp: '+584121234567', email: 'ventas@plastinova.example' },
+        leadCapture: { webhookUrl: `http://localhost:${port}/api/test-webhook` },
+      },
     }),
     env,
   });
+}
+
+/** Stands in for the site's lead webhook: checks the signature, logs no personal data. */
+async function testWebhook(request: Request): Promise<Response> {
+  const raw = await request.text();
+  const valid = verifyLeadSignature(raw, request.headers.get(SIGNATURE_HEADER), leadSecret);
+  const lead = valid ? (JSON.parse(raw) as { transcript?: unknown[] }) : undefined;
+  console.log(
+    JSON.stringify({
+      event: 'playground.lead-received',
+      signature: valid ? 'valid' : 'INVALID',
+      transcriptMessages: lead?.transcript?.length ?? 0,
+    }),
+  );
+  return new Response(null, { status: valid ? 204 : 401 });
 }
 
 function noKeyHandler(): Response {
@@ -68,8 +98,6 @@ async function file(filePath: string, type: string): Promise<Response> {
   });
 }
 
-const port = Number(process.env.PORT ?? 4321);
-
 serve(
   {
     port,
@@ -78,6 +106,8 @@ serve(
       if (pathname === '/api/chat') {
         return handleChat(request, { clientIp: incoming.socket.remoteAddress });
       }
+      if (pathname === '/api/test-webhook' && request.method === 'POST')
+        return testWebhook(request);
       if (pathname === '/api/mock-chat' && request.method === 'POST')
         return handleMockChat(request);
       if (request.method === 'GET' && pathname === '/') {

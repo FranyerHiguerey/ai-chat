@@ -38,6 +38,8 @@ export interface AiChatProps {
   onClose?: () => void;
   onMessage?: (message: Message) => void;
   onError?: (error: ChatError) => void;
+  /** A lead form was delivered (no form data, for analytics). */
+  onLead?: () => void;
 }
 
 /**
@@ -80,6 +82,7 @@ export function AiChat(props: AiChatProps): ReactElement {
         'ai-chat:error',
         (event) => handlers.current.onError?.((event as CustomEvent<ChatError>).detail),
       ],
+      ['ai-chat:lead', () => handlers.current.onLead?.()],
     ];
     for (const [type, listener] of listeners) el.addEventListener(type, listener);
     return () => {

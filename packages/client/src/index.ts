@@ -1,6 +1,10 @@
 import type {
+  Card,
   ChatMessage,
+  HandoffChannel,
   Language,
+  LeadFields,
+  LeadRequestBody,
   RequestErrorBody,
   RequestErrorCode,
   ServerEvent,
@@ -9,7 +13,16 @@ import type {
 import { parseSSE } from './sse.js';
 
 export { parseSSE, type SSEMessage } from './sse.js';
-export type { ChatMessage, Language, ServerEvent, StreamErrorCode, RequestErrorCode };
+export type {
+  Card,
+  ChatMessage,
+  HandoffChannel,
+  Language,
+  LeadFields,
+  ServerEvent,
+  StreamErrorCode,
+  RequestErrorCode,
+};
 
 /** Failures detected in the browser rather than reported by the server. */
 export type ClientErrorCode = 'network' | 'bad_response';
@@ -37,7 +50,15 @@ export interface StreamChatOptions {
   fetch?: typeof fetch;
 }
 
-const KNOWN_EVENTS = new Set<string>(['start', 'delta', 'replace', 'done', 'error']);
+const KNOWN_EVENTS = new Set<string>([
+  'start',
+  'delta',
+  'replace',
+  'suggestions',
+  'card',
+  'done',
+  'error',
+]);
 
 /**
  * Sends a conversation to an ai-chat endpoint and yields its events as they
@@ -97,6 +118,35 @@ export async function* streamChat(options: StreamChatOptions): AsyncGenerator<Ch
       message: 'The connection closed before the reply ended',
     };
   }
+}
+
+export interface SubmitLeadOptions extends LeadRequestBody {
+  /** The same endpoint the chat uses. */
+  endpoint: string;
+  headers?: Record<string, string>;
+  fetch?: typeof fetch;
+}
+
+export type SubmitLeadResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
+
+/** Sends the lead form to the site's endpoint, which forwards it to the site's webhook. */
+export async function submitLead(options: SubmitLeadOptions): Promise<SubmitLeadResult> {
+  const { endpoint, headers, fetch: doFetch = fetch, ...body } = options;
+  let response: Response;
+  try {
+    response = await doFetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...headers },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    return { ok: false, code: 'network', message: errorMessage(error) };
+  }
+  if (response.ok) return { ok: true };
+  const failure = await requestError(response);
+  return failure.type === 'error'
+    ? { ok: false, code: failure.code, message: failure.message }
+    : { ok: false, code: 'bad_response', message: `HTTP ${response.status}` };
 }
 
 async function requestError(response: Response): Promise<ChatEvent> {

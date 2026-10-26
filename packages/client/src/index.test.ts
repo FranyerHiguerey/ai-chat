@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { streamChat, type ChatEvent } from './index.js';
+import { streamChat, submitLead, type ChatEvent } from './index.js';
 
 const sse = (body: string, init: ResponseInit = {}) =>
   new Response(body, {
@@ -50,7 +50,7 @@ describe('streamChat', () => {
   });
 
   it('skips unknown events, so newer servers stay compatible', async () => {
-    const body = FULL_REPLY.replace(': ping', 'event: suggestions\ndata: {"items":["a"]}');
+    const body = FULL_REPLY.replace(': ping', 'event: product_carousel\ndata: {"items":["a"]}');
     const { events } = await run(sse(body));
     expect(events.map((e) => e.type)).toEqual(['start', 'delta', 'done']);
   });
@@ -86,5 +86,59 @@ describe('streamChat', () => {
     const abortError = new DOMException('The operation was aborted.', 'AbortError');
     const { events } = await run(abortError, controller.signal);
     expect(events).toEqual([]);
+  });
+});
+
+describe('streamChat rich events', () => {
+  it('passes suggestions and cards through', async () => {
+    const { events } = await run(
+      sse(
+        [
+          'event: card\ndata: {"kind":"lead_form","reason":"Para cotizar"}\n\n',
+          'event: suggestions\ndata: {"items":["¿Precios?"]}\n\n',
+          'event: done\ndata: {"finishReason":"stop"}\n\n',
+        ].join(''),
+      ),
+    );
+    expect(events).toEqual([
+      { type: 'card', kind: 'lead_form', reason: 'Para cotizar' },
+      { type: 'suggestions', items: ['¿Precios?'] },
+      { type: 'done', finishReason: 'stop' },
+    ]);
+  });
+});
+
+describe('submitLead', () => {
+  const lead = { name: 'Ana', email: 'ana@example.com' };
+
+  it('posts the lead and reports success', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json({ ok: true }));
+    expect(await submitLead({ endpoint: '/api/chat', lead, lang: 'es', fetch })).toEqual({
+      ok: true,
+    });
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({ lead, lang: 'es' });
+  });
+
+  it('returns the server error, or a network error', async () => {
+    const failed = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        Response.json(
+          { error: { code: 'lead_failed', message: 'No pudimos enviar.' } },
+          { status: 502 },
+        ),
+      );
+    expect(await submitLead({ endpoint: '/api/chat', lead, fetch: failed })).toEqual({
+      ok: false,
+      code: 'lead_failed',
+      message: 'No pudimos enviar.',
+    });
+    const offline = vi
+      .fn<typeof globalThis.fetch>()
+      .mockRejectedValue(new TypeError('Failed to fetch'));
+    expect(await submitLead({ endpoint: '/api/chat', lead, fetch: offline })).toMatchObject({
+      ok: false,
+      code: 'network',
+    });
   });
 });

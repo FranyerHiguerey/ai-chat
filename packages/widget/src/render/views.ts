@@ -1,6 +1,8 @@
 /** Builders for the parts of the panel that depend on content. */
-import type { Message, Starter } from '../types.js';
+import type { HandoffChannel, LeadFields, SubmitLeadResult } from '@franyerhiguerey/ai-chat-client';
+import type { Message, MessagePart, Starter } from '../types.js';
 import { textOf } from '../types.js';
+import { safeUrl } from '../markdown.js';
 import type { UiStrings } from '../i18n.js';
 import { renderMarkdown } from '../markdown.js';
 import { h, srOnly } from './dom.js';
@@ -10,6 +12,8 @@ export interface ViewContext {
   name: string;
   avatar?: string;
   strings: UiStrings;
+  /** Sends a lead form shown under a message. */
+  submitLead?: (messageId: string, lead: LeadFields) => Promise<SubmitLeadResult>;
 }
 
 export function initials(name: string): string {
@@ -34,15 +38,23 @@ export function avatar(ctx: ViewContext, size: 'sm' | 'md' | 'lg'): HTMLElement 
 
 export function messageView(message: Message, ctx: ViewContext): HTMLElement {
   const isUser = message.role === 'user';
-  const bubble = h('div', { class: 'bubble' });
-  if (isUser) bubble.textContent = textOf(message);
-  else bubble.append(renderMarkdown(textOf(message)));
+  const text = textOf(message);
+  const bubble = text.trim() ? h('div', { class: 'bubble' }) : undefined;
+  if (bubble && isUser) bubble.textContent = text;
+  else if (bubble) bubble.append(renderMarkdown(text));
+  const cards = isUser ? [] : message.parts.map((part) => cardView(part, message.id, ctx));
 
   const row = h(
     'div',
     { class: `msg msg--${message.role}`, 'data-id': message.id },
     !isUser && avatar(ctx, 'sm'),
-    h('div', { class: 'msg__body' }, srOnly(`${isUser ? ctx.strings.you : ctx.name}: `), bubble),
+    h(
+      'div',
+      { class: 'msg__body' },
+      srOnly(`${isUser ? ctx.strings.you : ctx.name}: `),
+      bubble,
+      ...cards,
+    ),
   );
   if (message.notice) {
     const text = message.notice === 'stopped' ? ctx.strings.stopped : ctx.strings.cutOff;
@@ -178,4 +190,166 @@ export function chipsView(items: string[], onPick: (text: string) => void): HTML
     chip.addEventListener('click', () => onPick(text));
     return chip;
   });
+}
+
+function cardView(part: MessagePart, messageId: string, ctx: ViewContext): HTMLElement | undefined {
+  if (part.type === 'handoff') return handoffCard(part.channels, ctx);
+  if (part.type === 'lead_form') {
+    return part.status === 'sent' ? leadSent(ctx) : leadForm(part.reason, messageId, ctx);
+  }
+  return undefined;
+}
+
+/** Buttons to reach the team. Links are built by the server and checked again here. */
+export function handoffCard(channels: HandoffChannel[], ctx: ViewContext): HTMLElement | undefined {
+  const { handoff, newTab } = ctx.strings;
+  const links = channels.flatMap((channel) => {
+    const href = safeUrl(channel.href);
+    if (!href) return [];
+    const isWhatsapp = channel.type === 'whatsapp';
+    const link = h(
+      'a',
+      { class: `btn ${isWhatsapp ? 'btn--whatsapp' : 'btn--ghost'}`, href },
+      icon(isWhatsapp ? 'chat' : 'mail', 18),
+      isWhatsapp ? handoff.whatsapp : handoff.email,
+    );
+    if (href.startsWith('http')) {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.append(srOnly(` ${newTab}`));
+    }
+    return [link];
+  });
+  if (links.length === 0) return undefined;
+  return h(
+    'div',
+    { class: 'card card--handoff' },
+    h('p', { class: 'card__title' }, icon('headset', 18), handoff.title),
+    h('div', { class: 'card__actions' }, ...links),
+  );
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE = /^\+?[\d\s().-]{6,}$/;
+
+/** Checks the form like the server does, so most mistakes are caught before sending. */
+export function validateLead(
+  lead: LeadFields,
+  strings: UiStrings['lead'],
+): Partial<Record<keyof LeadFields, string>> {
+  const errors: Partial<Record<keyof LeadFields, string>> = {};
+  if (!lead.name.trim()) errors.name = strings.invalid.name;
+  if (lead.email && !EMAIL.test(lead.email)) errors.email = strings.invalid.email;
+  if (lead.phone && !PHONE.test(lead.phone)) errors.phone = strings.invalid.phone;
+  if (!lead.email && !lead.phone) errors.email = strings.invalid.contact;
+  return errors;
+}
+
+function leadForm(reason: string, messageId: string, ctx: ViewContext): HTMLElement {
+  const strings = ctx.strings.lead;
+  const prefix = `lead-${messageId}`;
+  const field = (
+    name: keyof LeadFields,
+    label: string,
+    attrs: Record<string, string | boolean>,
+    multiline = false,
+  ) => {
+    const id = `${prefix}-${name}`;
+    const control = multiline
+      ? h('textarea', { id, name, rows: '3', ...attrs })
+      : h('input', { id, name, ...attrs });
+    const error = h('p', { class: 'field__error', id: `${id}-error`, hidden: true });
+    return {
+      name,
+      control,
+      error,
+      root: h('div', { class: 'field' }, h('label', { for: id }, label), control, error),
+    };
+  };
+  const fields = [
+    field('name', strings.name, { autocomplete: 'name', required: true, maxlength: '120' }),
+    field('email', `${strings.email} ${strings.optional}`, {
+      type: 'email',
+      autocomplete: 'email',
+      maxlength: '200',
+    }),
+    field('phone', `${strings.phone} ${strings.optional}`, {
+      type: 'tel',
+      autocomplete: 'tel',
+      maxlength: '40',
+    }),
+    field('message', `${strings.message} ${strings.optional}`, { maxlength: '2000' }, true),
+  ];
+  const status = h('p', { class: 'card__status', role: 'status' });
+  const submit = h(
+    'button',
+    { type: 'submit', class: 'btn btn--primary' },
+    icon('send', 16),
+    strings.submit,
+  );
+  const form = h(
+    'form',
+    { class: 'card card--lead', novalidate: true, 'aria-labelledby': `${prefix}-title` },
+    h('p', { class: 'card__title', id: `${prefix}-title` }, strings.title),
+    reason && h('p', { class: 'card__text' }, reason),
+    ...fields.map((f) => f.root),
+    h('p', { class: 'card__hint' }, strings.consent),
+    status,
+    h('div', { class: 'card__actions' }, submit),
+  );
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const lead: LeadFields = { name: '' };
+    for (const f of fields) {
+      const value = f.control.value.trim();
+      if (value) lead[f.name] = value;
+    }
+    const errors = validateLead(lead, strings);
+    for (const f of fields) {
+      const message = errors[f.name];
+      f.error.textContent = message ?? '';
+      f.error.hidden = !message;
+      if (message) {
+        f.control.setAttribute('aria-invalid', 'true');
+        f.control.setAttribute('aria-describedby', f.error.id);
+      } else {
+        f.control.removeAttribute('aria-invalid');
+        f.control.removeAttribute('aria-describedby');
+      }
+    }
+    const first = fields.find((f) => errors[f.name]);
+    if (first) {
+      first.control.focus();
+      return;
+    }
+    if (!ctx.submitLead) return;
+
+    submit.disabled = true;
+    submit.replaceChildren(strings.sending);
+    status.textContent = '';
+    void ctx.submitLead(messageId, lead).then((result) => {
+      // On success the message re-renders as "sent"; only failures land here.
+      if (result.ok) return;
+      submit.disabled = false;
+      submit.replaceChildren(icon('send', 16), strings.submit);
+      status.textContent = result.message || ctx.strings.errors.network;
+      status.classList.add('card__status--error');
+    });
+  });
+  return form;
+}
+
+function leadSent(ctx: ViewContext): HTMLElement {
+  return h(
+    'div',
+    { class: 'card card--sent', role: 'status' },
+    h('span', { class: 'card__icon' }, icon('check', 18)),
+    h(
+      'div',
+      {},
+      h('p', { class: 'card__title' }, ctx.strings.lead.sentTitle),
+      h('p', { class: 'card__text' }, ctx.strings.lead.sentText),
+    ),
+  );
 }

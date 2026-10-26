@@ -1,8 +1,10 @@
 /**
  * A fake chat endpoint for trying the widget with no API key and no cost.
- * It streams a canned markdown reply in small chunks. Words in the last
- * message pick other scenarios: "error", "busy"/"demanda", "limit"/"límite",
- * "cut"/"corte", "network"/"red", "slow"/"lento".
+ * It streams a canned markdown reply in small chunks, then reply chips. Words
+ * in the last message pick other scenarios: "error", "busy"/"demanda",
+ * "limit"/"límite", "cut"/"corte", "network"/"red", "slow"/"lento", plus the
+ * cards: "humano"/"whatsapp"/"person" (handoff) and "cotiz"/"quote" (lead form).
+ * A lead sent with the name "error" fails, any other succeeds.
  */
 const REPLIES = {
   es: [
@@ -23,6 +25,22 @@ const REPLIES = {
     '',
     'More details on [our shipping page](https://example.com/shipping).',
   ].join('\n'),
+};
+
+const SUGGESTIONS = {
+  es: ['¿Cuál es el pedido mínimo?', '¿Hacen envíos a todo el país?'],
+  en: ["What's the minimum order?", 'Do you ship nationwide?'],
+};
+
+const CARDS = {
+  handoff: {
+    es: 'Hola, quiero hablar con una persona sobre un pedido.',
+    en: 'Hi, I want to talk to a person about an order.',
+  },
+  lead: {
+    es: 'Déjanos tus datos y te enviamos la cotización.',
+    en: "Leave your details and we'll send you a quote.",
+  },
 };
 
 // Same wording as the server's fixed strings (core/src/i18n.ts).
@@ -48,9 +66,18 @@ const frame = (event: string, data: unknown) =>
 export async function handleMockChat(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as {
     messages?: { content?: string }[];
+    lead?: { name?: string };
     lang?: string;
   };
   const lang = body.lang === 'en' ? 'en' : 'es';
+  if (body.lead) {
+    if (body.lead.name?.trim().toLowerCase() !== 'error') return Response.json({ ok: true });
+    const message =
+      lang === 'en'
+        ? "We couldn't send your details. Please try again or write to us directly."
+        : 'No pudimos enviar tus datos. Inténtalo de nuevo o escríbenos directamente.';
+    return Response.json({ error: { code: 'lead_failed', message } }, { status: 502 });
+  }
   const last = (body.messages?.at(-1)?.content ?? '').toLowerCase();
   const has = (...words: string[]) => words.some((word) => last.includes(word));
   const text = REPLIES[lang];
@@ -88,7 +115,26 @@ export async function handleMockChat(request: Request): Promise<Response> {
           if (request.signal.aborted) return;
         }
         // "network": close without done, as a dropped connection would.
-        if (!network) send(frame('done', { finishReason: cut ? 'max_tokens' : 'stop' }));
+        if (network) return controller.close();
+        if (!cut) {
+          if (has('humano', 'whatsapp', 'person')) {
+            const text = encodeURIComponent(CARDS.handoff[lang]);
+            send(
+              frame('card', {
+                kind: 'handoff',
+                channels: [
+                  { type: 'whatsapp', href: `https://wa.me/584121234567?text=${text}` },
+                  { type: 'email', href: `mailto:ventas@example.com?subject=Pedido&body=${text}` },
+                ],
+              }),
+            );
+          }
+          if (has('cotiz', 'quote')) {
+            send(frame('card', { kind: 'lead_form', reason: CARDS.lead[lang] }));
+          }
+          send(frame('suggestions', { items: SUGGESTIONS[lang] }));
+        }
+        send(frame('done', { finishReason: cut ? 'max_tokens' : 'stop' }));
         controller.close();
       } catch {
         // The visitor stopped the reply: the stream is already closed.

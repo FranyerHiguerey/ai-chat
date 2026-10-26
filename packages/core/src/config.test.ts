@@ -25,7 +25,7 @@ describe('defineConfig', () => {
       maxKnowledgeChars: 200_000,
     });
     expect(config.widget).toEqual({});
-    expect(config.features).toEqual({});
+    expect(config.features).toEqual({ suggestions: true });
     expect(config.allowedOrigins).toEqual([]);
   });
 

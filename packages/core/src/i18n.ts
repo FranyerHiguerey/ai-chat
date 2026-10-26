@@ -26,6 +26,7 @@ export const STRINGS: Record<Language, Strings> = {
       rate_limited:
         'Estás enviando mensajes muy rápido. Espera unos segundos e inténtalo de nuevo.',
       unavailable: 'El asistente no está disponible por hoy. Contáctanos directamente.',
+      lead_failed: 'No pudimos enviar tus datos. Inténtalo de nuevo o escríbenos directamente.',
     },
   },
   en: {
@@ -45,6 +46,7 @@ export const STRINGS: Record<Language, Strings> = {
       rate_limited: "You're sending messages very fast. Wait a few seconds and try again.",
       unavailable:
         'The assistant is not available for the rest of the day. Please contact us directly.',
+      lead_failed: "We couldn't send your details. Please try again or write to us directly.",
     },
   },
 };

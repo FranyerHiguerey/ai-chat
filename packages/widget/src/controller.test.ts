@@ -171,3 +171,125 @@ describe('isRetryable', () => {
     }
   });
 });
+
+describe('ChatController rich replies', () => {
+  const handoff = {
+    kind: 'handoff',
+    channels: [{ type: 'whatsapp', href: 'https://wa.me/1?text=hi' }],
+  };
+  const rich = (...frames: string[]) =>
+    [
+      frame('start', { id: '1', protocol: 1 }),
+      ...frames,
+      frame('done', { finishReason: 'stop' }),
+    ].join('');
+
+  it('commits cards and chips with the reply, keeping the history text-only', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      sse(
+        rich(
+          frame('delta', { text: 'Claro.' }),
+          frame('card', handoff),
+          frame('suggestions', { items: ['¿Precios?'] }),
+        ),
+      ),
+    );
+    const { controller } = setup(fetch);
+    controller.send('Quiero hablar con alguien');
+    await idle(controller);
+
+    const message = controller.state.messages[1];
+    expect(message?.parts).toEqual([
+      { type: 'text', text: 'Claro.' },
+      { type: 'handoff', channels: handoff.channels },
+    ]);
+    expect(message?.suggestions).toEqual(['¿Precios?']);
+    expect(message && textOf(message)).toBe('Claro.');
+  });
+
+  it('keeps a reply that is only a card', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      sse(rich(frame('card', { kind: 'lead_form', reason: 'Para cotizar' }))),
+    );
+    const { controller, onError } = setup(fetch);
+    controller.send('Cotización');
+    await idle(controller);
+    expect(controller.state.messages[1]?.parts).toEqual([
+      { type: 'lead_form', reason: 'Para cotizar', status: 'open' },
+    ]);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('submits a lead with the transcript and marks the form sent', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        sse(
+          rich(
+            frame('delta', { text: 'Te contactamos.' }),
+            frame('card', { kind: 'lead_form', reason: 'x' }),
+          ),
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ ok: true }));
+    const onLead = vi.fn();
+    const store = memoryStore();
+    const controller = new ChatController({
+      endpoint: '/api/chat',
+      lang: () => 'es',
+      store,
+      fetch,
+      onLead,
+    });
+    controller.send('Quiero cotizar');
+    await idle(controller);
+    const id = controller.state.messages[1]!.id;
+
+    const lead = { name: 'Ana', email: 'ana@example.com' };
+    expect(await controller.submitLead(id, lead)).toEqual({ ok: true });
+    const body = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body));
+    expect(body).toMatchObject({
+      lead,
+      lang: 'es',
+      transcript: [
+        { role: 'user', content: 'Quiero cotizar' },
+        { role: 'assistant', content: 'Te contactamos.' },
+      ],
+    });
+    expect(controller.state.messages[1]?.parts.at(-1)).toMatchObject({ status: 'sent' });
+    expect(restoreMessages(store.load())[1]?.parts.at(-1)).toMatchObject({ status: 'sent' });
+    expect(onLead).toHaveBeenCalledWith(lead);
+  });
+
+  it('leaves the form open when sending fails', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(sse(rich(frame('card', { kind: 'lead_form', reason: 'x' }))))
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: { code: 'lead_failed', message: 'No pudimos enviar.' } },
+          { status: 502 },
+        ),
+      );
+    const { controller } = setup(fetch);
+    controller.send('Cotizar');
+    await idle(controller);
+    const result = await controller.submitLead(controller.state.messages[1]!.id, {
+      name: 'Ana',
+      phone: '+584121234567',
+    });
+    expect(result).toMatchObject({ ok: false, code: 'lead_failed' });
+    expect(controller.state.messages[1]?.parts.at(-1)).toMatchObject({ status: 'open' });
+  });
+
+  it('restores saved rich parts and rejects malformed ones', () => {
+    const good = { ...createMessage('assistant', 'Hola'), suggestions: ['a'] };
+    good.parts.push({ type: 'handoff', channels: [{ type: 'email', href: 'mailto:a@b.co' }] });
+    expect(restoreMessages({ v: 1, messages: [good] })).toHaveLength(1);
+    const bad = {
+      ...createMessage('assistant', 'x'),
+      parts: [{ type: 'handoff', channels: [{ type: 'fax', href: 1 }] }],
+    };
+    expect(restoreMessages({ v: 1, messages: [bad] })).toEqual([]);
+  });
+});

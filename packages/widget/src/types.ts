@@ -1,3 +1,5 @@
+import type { HandoffChannel } from '@franyerhiguerey/ai-chat-client';
+
 export type Language = 'es' | 'en';
 
 export const LANGUAGES: readonly Language[] = ['es', 'en'];
@@ -29,8 +31,11 @@ export interface WidgetConfig {
   teaser?: Localized<string>;
 }
 
-/** Rich parts (cards, handoff, lead form) join this union in M4. */
-export type MessagePart = { type: 'text'; text: string };
+/** What a reply is made of: its text, then any cards the server sent with it. */
+export type MessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'handoff'; channels: HandoffChannel[] }
+  | { type: 'lead_form'; reason: string; status: 'open' | 'sent' };
 
 /** Shown under an assistant reply that didn't end normally. */
 export type Notice = 'stopped' | 'cut_off';
@@ -40,6 +45,8 @@ export interface Message {
   role: 'user' | 'assistant';
   parts: MessagePart[];
   notice?: Notice;
+  /** Reply chips offered after this reply. Shown only while it's the latest one. */
+  suggestions?: string[];
 }
 
 export interface ChatError {
@@ -58,8 +65,9 @@ export function localize<T>(value: Localized<T> | undefined, lang: Language): T 
   return value as T;
 }
 
+/** The message's text only: cards stay in the widget, the server sees plain text. */
 export function textOf(message: Message): string {
-  return message.parts.map((part) => part.text).join('');
+  return message.parts.map((part) => (part.type === 'text' ? part.text : '')).join('');
 }
 
 let counter = 0;
