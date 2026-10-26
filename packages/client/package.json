@@ -1,8 +1,24 @@
 {
   "name": "@franyerhiguerey/ai-chat-client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Browser client for ai-chat: streams replies from an ai-chat endpoint",
+  "keywords": [
+    "chatbot",
+    "sse",
+    "streaming",
+    "browser"
+  ],
   "license": "MIT",
+  "author": "Franyer Higuerey (https://github.com/FranyerHiguerey)",
+  "homepage": "https://github.com/FranyerHiguerey/ai-chat/tree/main/packages/client#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FranyerHiguerey/ai-chat.git",
+    "directory": "packages/client"
+  },
+  "bugs": {
+    "url": "https://github.com/FranyerHiguerey/ai-chat/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

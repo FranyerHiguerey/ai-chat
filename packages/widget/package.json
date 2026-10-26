@@ -1,8 +1,24 @@
 {
   "name": "@franyerhiguerey/ai-chat-widget",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The <ai-chat> Web Component: a white-label chat widget for any website",
+  "keywords": [
+    "chatbot",
+    "web-component",
+    "widget",
+    "custom-element"
+  ],
   "license": "MIT",
+  "author": "Franyer Higuerey (https://github.com/FranyerHiguerey)",
+  "homepage": "https://github.com/FranyerHiguerey/ai-chat/tree/main/packages/widget#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FranyerHiguerey/ai-chat.git",
+    "directory": "packages/widget"
+  },
+  "bugs": {
+    "url": "https://github.com/FranyerHiguerey/ai-chat/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

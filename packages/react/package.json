@@ -1,8 +1,23 @@
 {
   "name": "@franyerhiguerey/ai-chat-react",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React wrapper for the <ai-chat> widget",
+  "keywords": [
+    "chatbot",
+    "react",
+    "widget"
+  ],
   "license": "MIT",
+  "author": "Franyer Higuerey (https://github.com/FranyerHiguerey)",
+  "homepage": "https://github.com/FranyerHiguerey/ai-chat/tree/main/packages/react#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FranyerHiguerey/ai-chat.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/FranyerHiguerey/ai-chat/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
