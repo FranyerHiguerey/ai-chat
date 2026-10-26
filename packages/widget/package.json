@@ -1,0 +1,38 @@
+{
+  "name": "@franyerhiguerey/ai-chat-widget",
+  "version": "0.0.0",
+  "description": "The <ai-chat> Web Component: a white-label chat widget for any website",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./global": "./dist/ai-chat.global.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "./dist/index.js",
+    "./dist/ai-chat.global.js"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@franyerhiguerey/ai-chat-client": "workspace:*",
+    "@franyerhiguerey/ai-chat-core": "workspace:*",
+    "happy-dom": "^21.0.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0"
+  }
+}

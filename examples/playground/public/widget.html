@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>ai-chat widget playground</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --surface: #ffffff;
+        --text: #16181d;
+        --muted: #5f6673;
+        --border: #e2e5ea;
+        --block: #e9ecf1;
+        color-scheme: light;
+      }
+      :root[data-theme='dark'] {
+        --bg: #0f1115;
+        --surface: #171a21;
+        --text: #e7e9ee;
+        --muted: #9aa1ad;
+        --border: #2a2f3a;
+        --block: #222731;
+        color-scheme: dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --bg: #0f1115;
+          --surface: #171a21;
+          --text: #e7e9ee;
+          --muted: #9aa1ad;
+          --border: #2a2f3a;
+          --block: #222731;
+          color-scheme: dark;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: var(--site-font, system-ui, sans-serif);
+        background: var(--bg);
+        color: var(--text);
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        align-items: center;
+        padding: 10px 16px;
+        font:
+          13px system-ui,
+          sans-serif;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+      }
+      .controls strong {
+        margin-right: auto;
+      }
+      .controls label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        color: var(--muted);
+      }
+      .controls select,
+      .controls button {
+        font: inherit;
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+      }
+      .site {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 32px 16px 120px;
+      }
+      .site h1 {
+        font-size: clamp(28px, 5vw, 44px);
+        margin: 24px 0 12px;
+      }
+      .site p {
+        color: var(--muted);
+        max-width: 40em;
+        line-height: 1.6;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 32px;
+      }
+      .card {
+        height: 180px;
+        border-radius: 16px;
+        background: var(--block);
+      }
+      .hint {
+        font-size: 13px;
+      }
+      code {
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <strong>ai-chat widget</strong>
+      <label
+        >Brand
+        <select id="preset">
+          <option value="default">Your Brand (default)</option>
+          <option value="bakery">Bakery</option>
+          <option value="law">Law firm</option>
+          <option value="software">Software</option>
+        </select>
+      </label>
+      <label
+        >Language
+        <select id="lang">
+          <option value="es">Español</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label
+        >Theme
+        <select id="theme">
+          <option value="auto">Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <label
+        >Stream
+        <select id="mode">
+          <option value="mock">Mock (free)</option>
+          <option value="live">Live (uses the API key)</option>
+        </select>
+      </label>
+      <button id="reset" type="button">Reset chat</button>
+    </div>
+
+    <main class="site">
+      <h1 id="site-title">Your Brand</h1>
+      <p id="site-text">A sample website. The chat in the corner is configured from this page.</p>
+      <p class="hint">
+        Mock scenarios: include <code>error</code>, <code>demanda</code>/<code>busy</code>,
+        <code>límite</code>/<code>limit</code>, <code>corte</code>/<code>cut</code>,
+        <code>red</code>/<code>network</code> or <code>lento</code>/<code>slow</code> in a message.
+      </p>
+      <div class="grid">
+        <div class="card"></div>
+        <div class="card"></div>
+        <div class="card"></div>
+      </div>
+    </main>
+
+    <ai-chat id="chat"></ai-chat>
+
+    <script src="/widget.js"></script>
+    <script>
+      const PRESETS = {
+        default: {
+          name: 'Your Brand',
+          tokens: {},
+          font: '',
+          text: {
+            es: 'Un sitio de ejemplo. El chat de la esquina se configura desde esta página.',
+            en: 'A sample website. The chat in the corner is configured from this page.',
+          },
+          config: {
+            teaser: { es: '👋 ¿Preguntas? Te ayudo.', en: '👋 Questions? I can help.' },
+            starters: {
+              es: [
+                { label: '¿Qué ofrecen?', icon: 'grid' },
+                { label: '¿Cuánto cuesta?', icon: 'tag' },
+                { label: '¿Cuánto tarda la entrega?', icon: 'truck' },
+                { label: 'Quiero que me contacten', icon: 'mail' },
+              ],
+              en: [
+                { label: 'What do you offer?', icon: 'grid' },
+                { label: 'How much does it cost?', icon: 'tag' },
+                { label: 'How long does delivery take?', icon: 'truck' },
+                { label: 'I want to be contacted', icon: 'mail' },
+              ],
+            },
+            handoff: { href: 'https://wa.me/10000000000' },
+          },
+        },
+        bakery: {
+          name: 'Panadería Aurora',
+          tokens: {
+            '--chat-brand': '#C2410C',
+            '--chat-brand-dark': '#FB923C',
+            '--chat-radius': '20px',
+          },
+          font: 'ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif',
+          config: {
+            starters: {
+              es: [
+                { label: '¿Hacen pedidos para eventos?', icon: 'package' },
+                { label: '¿A qué hora abren?', icon: 'clock' },
+                { label: '¿Dónde están?', icon: 'pin' },
+              ],
+              en: [
+                { label: 'Do you take event orders?', icon: 'package' },
+                { label: 'What time do you open?', icon: 'clock' },
+                { label: 'Where are you?', icon: 'pin' },
+              ],
+            },
+          },
+        },
+        law: {
+          name: 'Ríos & Asociados',
+          tokens: {
+            '--chat-brand': '#1E3A5F',
+            '--chat-brand-dark': '#8DB4E2',
+            '--chat-radius': '4px',
+          },
+          font: 'Georgia, "Times New Roman", serif',
+          config: {
+            starters: {
+              es: [
+                { label: 'Agendar una consulta', icon: 'clock' },
+                { label: '¿Cuáles son sus honorarios?', icon: 'receipt' },
+                { label: '¿En qué áreas trabajan?', icon: 'help' },
+              ],
+              en: [
+                { label: 'Book a consultation', icon: 'clock' },
+                { label: 'What are your fees?', icon: 'receipt' },
+                { label: 'Which areas do you cover?', icon: 'help' },
+              ],
+            },
+            handoff: {
+              href: 'mailto:contacto@example.com',
+              label: { es: 'Escribir un correo', en: 'Send an email' },
+            },
+          },
+        },
+        software: {
+          name: 'Nimbus',
+          tokens: {
+            '--chat-brand': '#7C3AED',
+            '--chat-brand-dark': '#A78BFA',
+            '--chat-radius': '12px',
+          },
+          font: '"Avenir Next", Futura, "Century Gothic", system-ui, sans-serif',
+          config: {
+            starters: {
+              es: [
+                { label: 'Comparar planes', icon: 'grid' },
+                { label: '¿Con qué se integra?', icon: 'package' },
+                { label: 'Hablar con ventas', icon: 'mail' },
+              ],
+              en: [
+                { label: 'Compare plans', icon: 'grid' },
+                { label: 'What does it integrate with?', icon: 'package' },
+                { label: 'Talk to sales', icon: 'mail' },
+              ],
+            },
+          },
+        },
+      };
+      const TOKENS = ['--chat-brand', '--chat-brand-dark', '--chat-radius', '--chat-font'];
+
+      const params = new URLSearchParams(location.search);
+      const chat = document.getElementById('chat');
+      const controls = {
+        preset: document.getElementById('preset'),
+        lang: document.getElementById('lang'),
+        theme: document.getElementById('theme'),
+        mode: document.getElementById('mode'),
+      };
+      controls.preset.value = params.get('brand') ?? 'default';
+      controls.lang.value = params.get('lang') ?? 'es';
+      controls.theme.value = params.get('theme') ?? 'auto';
+      controls.mode.value = params.get('mock') === '0' ? 'live' : 'mock';
+
+      function apply() {
+        const preset = PRESETS[controls.preset.value] ?? PRESETS.default;
+        const lang = controls.lang.value;
+        document.documentElement.lang = lang;
+        document.documentElement.dataset.theme = controls.theme.value;
+        document.documentElement.style.setProperty('--site-font', preset.font || null);
+        document.getElementById('site-title').textContent = preset.name;
+        document.getElementById('site-text').textContent = (preset.text ?? PRESETS.default.text)[
+          lang
+        ];
+
+        for (const token of TOKENS) chat.style.removeProperty(token);
+        for (const [token, value] of Object.entries(preset.tokens))
+          chat.style.setProperty(token, value);
+        chat.setAttribute('name', preset.name);
+        chat.setAttribute('lang', lang);
+        chat.setAttribute('theme', controls.theme.value);
+        chat.setAttribute(
+          'endpoint',
+          controls.mode.value === 'mock' ? '/api/mock-chat' : '/api/chat',
+        );
+        chat.config = preset.config;
+
+        const url = new URL(location.href);
+        url.searchParams.set('brand', controls.preset.value);
+        url.searchParams.set('lang', lang);
+        url.searchParams.set('theme', controls.theme.value);
+        url.searchParams.set('mock', controls.mode.value === 'mock' ? '1' : '0');
+        history.replaceState(null, '', url);
+      }
+
+      for (const control of Object.values(controls)) control.addEventListener('change', apply);
+      document.getElementById('reset').addEventListener('click', () => chat.reset());
+      for (const type of ['ai-chat:open', 'ai-chat:close', 'ai-chat:message', 'ai-chat:error']) {
+        chat.addEventListener(type, (event) => console.log(type, event.detail));
+      }
+      apply();
+    </script>
+  </body>
+</html>
