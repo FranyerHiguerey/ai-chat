@@ -27,6 +27,13 @@ export interface UiStrings {
   /** Failures the browser detects itself; server errors arrive already localized. */
   errors: { network: string; bad_response: string };
   suggestions: string;
+  items: {
+    label: string;
+    view: string;
+    quote: string;
+    /** What "Quote this" sends as the visitor's message. */
+    quoteMessage: (name: string) => string;
+  };
   handoff: { title: string; whatsapp: string; email: string };
   lead: {
     title: string;
@@ -78,6 +85,12 @@ export const STRINGS: Record<Language, UiStrings> = {
       bad_response: 'Algo salió mal. Inténtalo de nuevo en unos segundos.',
     },
     suggestions: 'Preguntas sugeridas',
+    items: {
+      label: 'Productos',
+      view: 'Ver',
+      quote: 'Cotizar',
+      quoteMessage: (name) => `Quiero cotizar ${name}`,
+    },
     handoff: { title: 'Habla con nuestro equipo', whatsapp: 'WhatsApp', email: 'Correo' },
     lead: {
       title: 'Déjanos tus datos',
@@ -131,6 +144,12 @@ export const STRINGS: Record<Language, UiStrings> = {
       bad_response: 'Something went wrong. Please try again in a few seconds.',
     },
     suggestions: 'Suggested questions',
+    items: {
+      label: 'Products',
+      view: 'View',
+      quote: 'Get a quote',
+      quoteMessage: (name) => `I'd like a quote for ${name}`,
+    },
     handoff: { title: 'Talk to our team', whatsapp: 'WhatsApp', email: 'Email' },
     lead: {
       title: 'Leave us your details',

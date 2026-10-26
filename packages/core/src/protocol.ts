@@ -37,8 +37,20 @@ export interface HandoffChannel {
   href: string;
 }
 
+/** A product card. No price: sites quote, the model can mention a catalog price in text. */
+export interface CardItem {
+  id: string;
+  name: string;
+  description?: string;
+  /** The product page (http/https). */
+  url?: string;
+  /** A product photo (http/https). */
+  image?: string;
+}
+
 /** Rich content shown under a reply. */
 export type Card =
+  | { kind: 'items'; items: CardItem[] }
   | { kind: 'handoff'; channels: HandoffChannel[] }
   | { kind: 'lead_form'; /** Why the form is shown, in the visitor's language. */ reason: string };
 

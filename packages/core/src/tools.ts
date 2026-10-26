@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { catalogResultText, searchCatalog, type CatalogItem } from './catalog.js';
 import type { ChatConfig } from './config.js';
-import type { HandoffChannel, ServerEvent } from './protocol.js';
+import type { CardItem, HandoffChannel, ServerEvent } from './protocol.js';
 import type { ToolCall, ToolSpec } from './types.js';
 
 /**
@@ -62,9 +63,26 @@ const SHOW_LEAD_FORM: ToolSpec = {
   }),
 };
 
-/** The tools this site offers, in a fixed order so the cached prompt prefix stays identical. */
-export function toolsFor(config: ChatConfig): ToolSpec[] {
+const SEARCH_CATALOG: ToolSpec = {
+  name: 'search_catalog',
+  description:
+    "Search the company's product catalog. The matches are shown to the visitor as product cards and returned to you. Use it before answering any question about products, sizes, materials, availability or prices.",
+  parameters: objectSchema({
+    query: {
+      type: 'string',
+      description:
+        'A few keywords in the catalog\'s terms, e.g. "frasco 250 ml" or "PET bottle 1 L".',
+    },
+  }),
+};
+
+/**
+ * The tools this site offers, in a fixed order so the cached prompt prefix
+ * stays identical. Pass the catalog size: search is offered only with products.
+ */
+export function toolsFor(config: ChatConfig, catalogSize = 0): ToolSpec[] {
   const tools: ToolSpec[] = [];
+  if (catalogSize > 0) tools.push(SEARCH_CATALOG);
   if (config.features.suggestions) tools.push(SUGGEST_REPLIES);
   if (handoffChannels(config, '').length > 0) tools.push(OFFER_HANDOFF);
   if (config.features.leadCapture) tools.push(SHOW_LEAD_FORM);
@@ -79,6 +97,11 @@ export function toolInstructions(tools: ToolSpec[]): string[] {
   // then answer. Asking for text and calls in one go made OpenAI models skip
   // the call; the client runs the second round (see MAX_ROUNDS in client.ts).
   const lines = ['', 'Tools: they show buttons and forms to the visitor and return right away.'];
+  if (offered.has('search_catalog')) {
+    lines.push(
+      "- When the visitor asks about products, sizes, materials, availability or prices: call search_catalog first with a short query in the catalog's terms; once it returns, answer from the results. They are already shown as cards, so don't repeat every detail. Never mention products the search did not return.",
+    );
+  }
   if (offered.has('show_lead_form')) {
     lines.push(
       '- When the visitor wants a quote, a price for a specific order, a call back or to be contacted: call show_lead_form first; once it returns, write a short answer that points to the form. Do not ask for their name, email or phone in the chat; the form collects them.',
@@ -86,7 +109,7 @@ export function toolInstructions(tools: ToolSpec[]): string[] {
   }
   if (offered.has('offer_handoff')) {
     lines.push(
-      '- When the visitor asks to talk to a person, or the documents do not answer their question: call offer_handoff first; once it returns, write a short answer.',
+      '- When the visitor asks to talk to a person, or the documents do not answer their question: call offer_handoff first; once it returns, write a short answer. The buttons carry the contact details, so do not repeat phone numbers or emails.',
     );
   }
   if (offered.has('suggest_replies')) {
@@ -103,6 +126,64 @@ export function toolInstructions(tools: ToolSpec[]): string[] {
 
 /** The events UI tools produce. */
 export type ToolEvent = Extract<ServerEvent, { type: 'suggestions' | 'card' }>;
+
+/** What a tool needs beyond its input. */
+export interface ToolContext {
+  config: ChatConfig;
+  catalog: CatalogItem[];
+}
+
+/** What a call shows the visitor (if anything) and what the model reads back. */
+export interface ToolOutcome {
+  event?: ToolEvent;
+  output: string;
+}
+
+export const TOOL_SHOWN = 'Shown to the visitor. Now write your short answer.';
+export const TOOL_NOT_SHOWN =
+  'Not shown (already shown or invalid input). Write your short answer.';
+
+const MAX_QUERY_CHARS = 200;
+const searchInput = z.object({ query: z.string() });
+
+/** The public part of a catalog item: what a card shows. */
+const toCardItem = ({ id, name, description, url, image }: CatalogItem): CardItem => ({
+  id,
+  name,
+  ...(description && { description }),
+  ...(url && { url }),
+  ...(image && { image }),
+});
+
+/**
+ * Runs a tool call. Catalog search shows its matches as cards and hands the
+ * same items to the model; the UI tools only report whether they were shown.
+ */
+export function runTool(call: ToolCall, ctx: ToolContext): ToolOutcome {
+  if (call.name === 'search_catalog') {
+    const input = searchInput.safeParse(call.input);
+    if (!input.success || ctx.catalog.length === 0) return { output: TOOL_NOT_SHOWN };
+    const query = clip(input.data.query, MAX_QUERY_CHARS);
+    const found = searchCatalog(ctx.catalog, query);
+    if (found.length > 0) {
+      return {
+        event: { type: 'card', kind: 'items', items: found.map(toCardItem) },
+        output: catalogResultText(found),
+      };
+    }
+    // Nothing matched: offer the team right away. The answering round can't call
+    // tools any more, so without this the model types the contact details instead.
+    const channels = handoffChannels(ctx.config, query);
+    if (channels.length === 0) return { output: catalogResultText([]) };
+    return {
+      event: { type: 'card', kind: 'handoff', channels },
+      output:
+        'No matching products. Buttons to contact the team are shown to the visitor; say so briefly instead of listing contact details.',
+    };
+  }
+  const event = toolEvent(call, ctx.config);
+  return event ? { event, output: TOOL_SHOWN } : { output: TOOL_NOT_SHOWN };
+}
 
 const clip = (text: string, max: number) => {
   const trimmed = text.trim().replace(/\s+/g, ' ');

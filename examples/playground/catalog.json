@@ -1,0 +1,107 @@
+[
+  {
+    "id": "pet-250",
+    "name": "Botella PET 250 ml",
+    "description": "Cuello 28 mm PCO 1881, para agua y jugos.",
+    "url": "https://plastinova.example/productos/botella-pet-250",
+    "tags": ["botellas", "bebidas"],
+    "attributes": {
+      "capacidad": "250 ml",
+      "material": "PET",
+      "colores": "transparente, ámbar, verde",
+      "pedido mínimo": "5.000 unidades"
+    }
+  },
+  {
+    "id": "pet-500",
+    "name": "Botella PET 500 ml",
+    "description": "Cuello 28 mm PCO 1881, para agua, jugos y aceites.",
+    "url": "https://plastinova.example/productos/botella-pet-500",
+    "tags": ["botellas", "bebidas"],
+    "attributes": {
+      "capacidad": "500 ml",
+      "material": "PET",
+      "colores": "transparente, ámbar, verde",
+      "pedido mínimo": "5.000 unidades"
+    }
+  },
+  {
+    "id": "pet-1000",
+    "name": "Botella PET 1 L",
+    "description": "Cuello 28 mm PCO 1881.",
+    "url": "https://plastinova.example/productos/botella-pet-1l",
+    "tags": ["botellas", "bebidas"],
+    "attributes": { "capacidad": "1 L", "material": "PET", "pedido mínimo": "5.000 unidades" }
+  },
+  {
+    "id": "pead-120",
+    "name": "Frasco PEAD 120 ml",
+    "description": "Boca ancha 63 mm, para cremas y suplementos.",
+    "url": "https://plastinova.example/productos/frasco-pead-120",
+    "tags": ["frascos", "cosmética"],
+    "attributes": {
+      "capacidad": "120 ml",
+      "material": "PEAD",
+      "boca": "63 mm",
+      "pedido mínimo": "3.000 unidades"
+    }
+  },
+  {
+    "id": "pead-250",
+    "name": "Frasco PEAD 250 ml",
+    "description": "Boca ancha 63 mm, para cremas, suplementos y productos en polvo.",
+    "url": "https://plastinova.example/productos/frasco-pead-250",
+    "tags": ["frascos", "cosmética", "alimentos"],
+    "attributes": {
+      "capacidad": "250 ml",
+      "material": "PEAD",
+      "boca": "63 mm",
+      "pedido mínimo": "3.000 unidades"
+    }
+  },
+  {
+    "id": "pead-500",
+    "name": "Frasco PEAD 500 ml",
+    "description": "Boca ancha 63 mm.",
+    "url": "https://plastinova.example/productos/frasco-pead-500",
+    "tags": ["frascos", "alimentos"],
+    "attributes": {
+      "capacidad": "500 ml",
+      "material": "PEAD",
+      "boca": "63 mm",
+      "pedido mínimo": "3.000 unidades"
+    }
+  },
+  {
+    "id": "tapa-t28",
+    "name": "Tapa T28",
+    "description": "Rosca para botellas PET, con banda de seguridad.",
+    "tags": ["tapas"],
+    "attributes": {
+      "medida": "28 mm",
+      "colores": "blanco, azul, rojo, negro",
+      "pedido mínimo": "10.000 unidades por color"
+    }
+  },
+  {
+    "id": "tapa-t63",
+    "name": "Tapa T63",
+    "description": "Tapa a rosca para frascos de boca ancha, liner de inducción opcional.",
+    "tags": ["tapas"],
+    "attributes": { "medida": "63 mm", "pedido mínimo": "10.000 unidades por color" }
+  },
+  {
+    "id": "bidon-5",
+    "name": "Bidón PEAD 5 L",
+    "description": "Con asa integrada, para químicos de limpieza y aceites.",
+    "tags": ["bidones", "limpieza"],
+    "attributes": { "capacidad": "5 L", "material": "PEAD", "pedido mínimo": "500 unidades" }
+  },
+  {
+    "id": "bidon-20",
+    "name": "Bidón PEAD 20 L",
+    "description": "Con asa integrada, para químicos, aceites industriales y agua.",
+    "tags": ["bidones", "limpieza"],
+    "attributes": { "capacidad": "20 L", "material": "PEAD", "pedido mínimo": "500 unidades" }
+  }
+]

@@ -6,7 +6,7 @@
 import { cp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { KnowledgeDoc } from '@franyerhiguerey/ai-chat-ingest';
-import type { SiteSettings } from '@franyerhiguerey/ai-chat-core';
+import type { CatalogItem, SiteSettings } from '@franyerhiguerey/ai-chat-core';
 
 /** Names the dashboard itself writes (see safeFileName). Anything else is refused. */
 const DOC_NAME = /^[a-z0-9-]+\.md$/;
@@ -59,6 +59,19 @@ export function createStorage(dir: string, seedDir: string) {
       if (!DOC_NAME.test(file)) throw new Error(`Refusing to delete ${file}`);
       await rm(path.join(dir, file), { force: true });
     },
+
+    async readCatalog(): Promise<CatalogItem[]> {
+      try {
+        return JSON.parse(await readFile(path.join(dir, 'catalog.json'), 'utf8')) as CatalogItem[];
+      } catch {
+        return [];
+      }
+    },
+
+    saveCatalog: (items: CatalogItem[]) =>
+      writeAtomic(path.join(dir, 'catalog.json'), `${JSON.stringify(items, null, 2)}\n`),
+
+    clearCatalog: () => rm(path.join(dir, 'catalog.json'), { force: true }),
   };
 }
 

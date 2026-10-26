@@ -46,6 +46,8 @@ export interface CompletionRequest {
   tools?: ToolSpec[];
   /** Earlier rounds of this same reply, replayed after `messages` so the model can continue. */
   rounds?: ToolRound[];
+  /** `none` makes the model answer in text without calling tools (the last round of a reply). */
+  toolChoice?: 'auto' | 'none';
 }
 
 /**

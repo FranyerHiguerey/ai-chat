@@ -18,6 +18,7 @@ import {
 import { handleMockChat } from './mock.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const catalog = JSON.parse(await readFile(path.join(here, 'catalog.json'), 'utf8'));
 
 try {
   process.loadEnvFile(path.join(here, '../../.env'));
@@ -55,6 +56,7 @@ function createLiveHandler(env: ChatEnv) {
         hours: 'Lunes a viernes, 8:00 a 17:00 (hora de Venezuela)',
       },
       knowledgeDir: path.join(here, 'knowledge'),
+      catalog,
       languages: { supported: ['es', 'en'], default: 'es', tone: 'Cercano, claro y profesional.' },
       features: {
         handoff: { whatsapp: '+584121234567', email: 'ventas@plastinova.example' },

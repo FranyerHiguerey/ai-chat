@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import {
   cachedSource,
+  catalogItemSchema,
   createChatHandler,
   defineConfig,
   folderSource,
@@ -19,10 +20,17 @@ import {
   validateSiteSettings,
   type ChatEnv,
 } from '@franyerhiguerey/ai-chat-core';
-import { IngestError, toKnowledgeDoc } from '@franyerhiguerey/ai-chat-ingest';
+import { IngestError, parseCatalog, toKnowledgeDoc } from '@franyerhiguerey/ai-chat-ingest';
 import { page } from './html.js';
 import { createStorage, isDocName } from './storage.js';
-import { formToSettings, knowledgePage, previewPage, settingsPage } from './views.js';
+import {
+  catalogPage,
+  formToSettings,
+  knowledgePage,
+  previewPage,
+  settingsPage,
+  type CatalogImport,
+} from './views.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -158,6 +166,41 @@ async function admin(request: Request, pathname: string): Promise<Response> {
     }
     await storage.deleteDoc(file);
     return redirect('/admin/knowledge');
+  }
+
+  if (pathname === '/admin/catalog') {
+    if (request.method !== 'POST') return page(catalogPage(await storage.readCatalog()));
+    const file = (await request.formData()).get('file');
+    if (typeof file === 'string' || !file?.name) {
+      return page(
+        catalogPage(await storage.readCatalog(), undefined, 'Choose a CSV or JSON file.'),
+        400,
+      );
+    }
+    const parsed = parseCatalog(await file.text(), {
+      format: file.name.toLowerCase().endsWith('.json') ? 'json' : 'csv',
+    });
+    // Core checks each item again (the same rules the chat applies when it loads them).
+    const items = [];
+    const errors: CatalogImport['errors'] = [...parsed.errors];
+    for (const item of parsed.items) {
+      const checked = catalogItemSchema.safeParse(item);
+      if (checked.success) items.push(checked.data);
+      else errors.push({ row: item.id, message: checked.error.issues[0]?.message ?? 'invalid' });
+    }
+    if (items.length === 0) {
+      return page(
+        catalogPage(await storage.readCatalog(), { file: file.name, imported: 0, errors }),
+        400,
+      );
+    }
+    await storage.saveCatalog(items);
+    return page(catalogPage(items, { file: file.name, imported: items.length, errors }));
+  }
+
+  if (pathname === '/admin/catalog/clear' && request.method === 'POST') {
+    await storage.clearCatalog();
+    return redirect('/admin/catalog');
   }
 
   if (pathname === '/admin/preview') return page(previewPage(new URL(request.url).origin));

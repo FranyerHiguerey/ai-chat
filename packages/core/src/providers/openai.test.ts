@@ -267,6 +267,13 @@ describe('openai provider tools', () => {
 });
 
 describe('openai provider tool rounds', () => {
+  it('maps toolChoice none to tool_choice', async () => {
+    const { create, provider } = setup(fakeResponse());
+    const tools = [{ name: 't', description: 'd', parameters: {} }];
+    await provider.complete({ system, messages, maxTokens: 1024, tools, toolChoice: 'none' });
+    expect(create.mock.calls[0]?.[0].tool_choice).toBe('none');
+  });
+
   it('replays the output items with encrypted reasoning, then one output per call', async () => {
     const { create, provider } = setup(fakeResponse());
     const replay = [

@@ -23,6 +23,7 @@ describe('defineConfig', () => {
       maxTokens: 1024,
       dailyTokenBudget: 1_000_000,
       maxKnowledgeChars: 200_000,
+      maxCatalogItems: 5_000,
     });
     expect(config.widget).toEqual({});
     expect(config.features).toEqual({ suggestions: true });

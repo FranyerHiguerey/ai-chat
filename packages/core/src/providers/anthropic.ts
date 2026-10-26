@@ -21,7 +21,14 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Chat
   const client = options.client ?? new Anthropic({ apiKey: options.apiKey });
   const { model } = options;
 
-  function params({ system, messages, maxTokens, tools, rounds = [] }: CompletionRequest) {
+  function params({
+    system,
+    messages,
+    maxTokens,
+    tools,
+    rounds = [],
+    toolChoice,
+  }: CompletionRequest) {
     // No temperature / top_p / top_k: the API rejects sampling params.
     return {
       model,
@@ -39,6 +46,8 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Chat
       output_config: { effort: 'low' as const },
       // Tools render before the system prompt, so the breakpoint above caches them too.
       ...(tools?.length ? { tools: tools.map(toAnthropicTool) } : {}),
+      // Changing tool_choice keeps the tools + system cache; only the messages are re-read.
+      ...(tools?.length && toolChoice === 'none' ? { tool_choice: { type: 'none' as const } } : {}),
     };
   }
 

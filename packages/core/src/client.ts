@@ -4,7 +4,9 @@ import { KnowledgeError, loadKnowledge, type KnowledgeDoc } from './knowledge.js
 import { buildSystemPrompt } from './prompt.js';
 import type { ServerEvent } from './protocol.js';
 import { createProvider } from './providers/index.js';
-import { toolEvent, toolsFor, type ToolEvent } from './tools.js';
+import { catalogSchema, type CatalogItem, type CatalogItemInput } from './catalog.js';
+import { ConfigError } from './config.js';
+import { runTool, TOOL_NOT_SHOWN, toolsFor, type ToolEvent } from './tools.js';
 import type {
   ChatMessage,
   ChatProvider,
@@ -48,6 +50,8 @@ export interface ChatClientOptions {
   onUsage?: (usage: UsageReport) => void;
   /** Knowledge already loaded (from a source). Otherwise it's read from `config.knowledgeDir`. */
   knowledge?: KnowledgeDoc[];
+  /** Products from a source. Otherwise `config.catalog` is used. */
+  catalog?: CatalogItemInput[];
 }
 
 export interface ChatClient {
@@ -59,8 +63,6 @@ export interface ChatClient {
 
 /** Model calls per reply: one that calls tools, one that answers. */
 const MAX_ROUNDS = 2;
-const TOOL_SHOWN = 'Shown to the visitor. Now write your short answer.';
-const TOOL_NOT_SHOWN = 'Not shown (already shown or invalid input). Write your short answer.';
 
 /** Sums the usage of a reply's rounds, so the reply is billed and logged once. */
 function addUsage(a: UsageReport, b: UsageReport): UsageReport {
@@ -77,9 +79,24 @@ function addUsage(a: UsageReport, b: UsageReport): UsageReport {
 const toolOf = (event: ToolEvent) =>
   event.type === 'suggestions'
     ? 'suggest_replies'
-    : event.kind === 'handoff'
-      ? 'offer_handoff'
-      : 'show_lead_form';
+    : event.kind === 'items'
+      ? 'search_catalog'
+      : event.kind === 'handoff'
+        ? 'offer_handoff'
+        : 'show_lead_form';
+
+/** The catalog to search, validated: unique ids, within limits.maxCatalogItems. */
+function resolveCatalog(options: ChatClientOptions): CatalogItem[] {
+  const input = options.catalog ?? options.config.catalog ?? [];
+  const result = catalogSchema(options.config.limits.maxCatalogItems).safeParse(input);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    throw new ConfigError(
+      `Invalid catalog: ${issue?.path.join('.') || '(root)'}: ${issue?.message}`,
+    );
+  }
+  return result.data;
+}
 
 function logDroppedTool(name: string): void {
   console.warn(
@@ -119,9 +136,10 @@ async function resolveKnowledge(options: ChatClientOptions): Promise<KnowledgeDo
 export async function createChatClient(options: ChatClientOptions): Promise<ChatClient> {
   const { config, env, onUsage = logUsage } = options;
   const provider = options.provider ?? (await createProvider(env));
-  const system = buildSystemPrompt(config, await resolveKnowledge(options));
+  const catalog = resolveCatalog(options);
+  const system = buildSystemPrompt(config, await resolveKnowledge(options), catalog.length);
   const maxTokens = config.limits.maxTokens;
-  const tools = toolsFor(config);
+  const tools = toolsFor(config, catalog.length);
 
   /** No tools: there's no widget to show their results. */
   async function ask(messages: ChatMessage[], { lang }: AskOptions = {}): Promise<AskResult> {
@@ -151,8 +169,16 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
     let usage: UsageReport | undefined;
 
     for (let round = 1; ; round++) {
-      const request = { system, messages, maxTokens, ...(tools.length ? { tools, rounds } : {}) };
-      const calls: { id: string; shown: boolean }[] = [];
+      // The last round must answer: models otherwise end a reply on a tool call
+      // (seen live with suggest_replies after a search), leaving no text.
+      const last = round === MAX_ROUNDS && rounds.length > 0;
+      const request = {
+        system,
+        messages,
+        maxTokens,
+        ...(tools.length ? { tools, rounds, ...(last && { toolChoice: 'none' as const }) } : {}),
+      };
+      const calls: { id: string; output: string }[] = [];
       let wroteText = false;
       let done: Extract<ProviderEvent, { type: 'done' }> | undefined;
 
@@ -163,10 +189,12 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
         } else if (event.type === 'tool_call') {
           // Each tool once per reply; unusable input is dropped and the reply still ends normally.
           const repeated = pending.some((held) => toolOf(held) === event.name);
-          const ui = repeated ? undefined : toolEvent(event, config);
-          if (ui) pending.push(ui);
-          else logDroppedTool(event.name);
-          calls.push({ id: event.id, shown: Boolean(ui) });
+          const outcome = repeated
+            ? { output: TOOL_NOT_SHOWN }
+            : runTool(event, { config, catalog });
+          if (outcome.event) pending.push(outcome.event);
+          if (outcome.output === TOOL_NOT_SHOWN) logDroppedTool(event.name);
+          calls.push({ id: event.id, output: outcome.output });
         } else {
           done = event;
         }
@@ -178,10 +206,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
       if (answerPending && round < MAX_ROUNDS) {
         rounds.push({
           replay: done.replay,
-          results: calls.map((call) => ({
-            id: call.id,
-            output: call.shown ? TOOL_SHOWN : TOOL_NOT_SHOWN,
-          })),
+          results: calls,
         });
         continue;
       }

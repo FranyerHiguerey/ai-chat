@@ -220,6 +220,16 @@ describe('createChatClient tool rounds', () => {
     });
   });
 
+  it('makes the last round answer in text, without tools', async () => {
+    const { provider, calls } = fakeProvider({ rounds: [{ chunks: [], toolCalls: [form] }, {}] });
+    const chat = await createChatClient({ config, env, provider, onUsage: vi.fn() });
+    await collect(chat.stream(question));
+    expect(calls[0]?.request.toolChoice).toBeUndefined();
+    expect(calls[1]?.request.toolChoice).toBe('none');
+    // Still sent: the tool definitions are part of the cached prefix.
+    expect(calls[1]?.request.tools).toEqual(calls[0]?.request.tools);
+  });
+
   it('needs no second round when the reply already has text', async () => {
     const { provider, calls } = fakeProvider({ toolCalls: [form] });
     const chat = await createChatClient({ config, env, provider, onUsage: vi.fn() });
@@ -244,5 +254,64 @@ describe('createChatClient tool rounds', () => {
     await collect(chat.stream(question));
     expect(calls[1]?.request.rounds?.[0]?.results[0]?.output).toMatch(/^Not shown/);
     vi.restoreAllMocks();
+  });
+});
+
+describe('createChatClient catalog', () => {
+  const catalog = [{ id: 'f250', name: 'Frasco PEAD 250 ml', attributes: { capacidad: '250 ml' } }];
+  const search = { id: 'call_s', name: 'search_catalog', input: { query: 'frasco 250 ml' } };
+
+  it('searches in round 1, shows the matches and answers from them in round 2', async () => {
+    const { provider, calls } = fakeProvider({
+      rounds: [{ chunks: [], toolCalls: [search] }, { chunks: ['Sí, el frasco de 250 ml.'] }],
+    });
+    const chat = await createChatClient({
+      config: testConfig(),
+      env,
+      provider,
+      catalog,
+      onUsage: vi.fn(),
+    });
+    const events = await collect(chat.stream(question));
+
+    expect(events).toEqual([
+      { type: 'delta', text: 'Sí, el frasco de 250 ml.' },
+      { type: 'card', kind: 'items', items: [{ id: 'f250', name: 'Frasco PEAD 250 ml' }] },
+      { type: 'done', finishReason: 'stop' },
+    ]);
+    expect(calls[1]?.request.rounds?.[0]?.results[0]?.output).toContain('id: f250');
+    expect(calls[0]?.request.tools?.[0]?.name).toBe('search_catalog');
+  });
+
+  it('keeps the catalog out of the prompt', async () => {
+    const { provider } = fakeProvider();
+    const chat = await createChatClient({
+      config: testConfig(),
+      env,
+      provider,
+      catalog,
+      onUsage: vi.fn(),
+    });
+    expect(chat.system.knowledge).not.toContain('Frasco PEAD 250 ml');
+    expect(chat.system.instructions).toContain('search_catalog');
+  });
+
+  it('uses config.catalog when no catalog is passed, and rejects an invalid one', async () => {
+    const { provider } = fakeProvider();
+    const chat = await createChatClient({
+      config: testConfig({ catalog }),
+      env,
+      provider,
+      onUsage: vi.fn(),
+    });
+    expect(chat.system.instructions).toContain('search_catalog');
+    await expect(
+      createChatClient({
+        config: testConfig(),
+        env,
+        provider,
+        catalog: [{ id: 'a', name: 'A', url: 'javascript:x' }],
+      }),
+    ).rejects.toThrow(/Invalid catalog/);
   });
 });

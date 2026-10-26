@@ -47,11 +47,16 @@ export function createBuilder(options: BuilderOptions) {
     return provider;
   };
 
-  const build = async (config: ChatConfig, knowledge?: ChatClientOptions['knowledge']) => {
+  const build = async (
+    config: ChatConfig,
+    knowledge?: ChatClientOptions['knowledge'],
+    catalog?: ChatClientOptions['catalog'],
+  ) => {
     const chat = await createChatClient({
       ...options,
       config,
       knowledge,
+      catalog,
       provider: await getProvider(),
     });
     return { config, chat };
@@ -71,9 +76,9 @@ export function createBuilder(options: BuilderOptions) {
       config = merged.value;
     }
     const hash = createHash('sha256')
-      .update(JSON.stringify([config, data.knowledge]))
+      .update(JSON.stringify([config, data.knowledge, data.catalog ?? null]))
       .digest('hex');
-    return { hash, make: () => build(config, data.knowledge) };
+    return { hash, make: () => build(config, data.knowledge, data.catalog) };
   }
 
   return {

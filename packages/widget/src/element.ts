@@ -219,6 +219,9 @@ export class AiChatElement extends Base {
       strings,
       name: this.getAttribute('name')?.trim() || this.remote.name || strings.assistant,
       avatar: this.getAttribute('avatar') || this.remote.avatar || undefined,
+      send: (text) => {
+        this.send(text);
+      },
       submitLead: (messageId, lead) =>
         this.controller
           ? this.controller.submitLead(messageId, lead)

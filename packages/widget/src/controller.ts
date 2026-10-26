@@ -203,9 +203,11 @@ export class ChatController {
           break;
         case 'card':
           this.replyCards.push(
-            event.kind === 'handoff'
-              ? { type: 'handoff', channels: event.channels }
-              : { type: 'lead_form', reason: event.reason, status: 'open' },
+            event.kind === 'items'
+              ? { type: 'items', items: event.items }
+              : event.kind === 'handoff'
+                ? { type: 'handoff', channels: event.channels }
+                : { type: 'lead_form', reason: event.reason, status: 'open' },
           );
           break;
         case 'done':
@@ -298,6 +300,14 @@ function isPart(value: unknown): value is MessagePart {
       );
     case 'lead_form':
       return typeof part.reason === 'string' && (part.status === 'open' || part.status === 'sent');
+    case 'items':
+      return (
+        Array.isArray(part.items) &&
+        part.items.every(
+          (item: { id?: unknown; name?: unknown }) =>
+            typeof item?.id === 'string' && typeof item.name === 'string',
+        )
+      );
     default:
       return false;
   }

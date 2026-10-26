@@ -7,3 +7,10 @@ export {
 } from './ingest.js';
 export { htmlToText } from './html.js';
 export { IngestError, type IngestErrorCode } from './errors.js';
+export {
+  parseCatalog,
+  parseCsv,
+  type CatalogItem,
+  type CatalogRowError,
+  type ParsedCatalog,
+} from './catalog.js';

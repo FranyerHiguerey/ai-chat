@@ -21,7 +21,14 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): ChatProvid
   const client = options.client ?? new OpenAI({ apiKey: options.apiKey });
   const { model } = options;
 
-  function params({ system, messages, maxTokens, tools, rounds = [] }: CompletionRequest) {
+  function params({
+    system,
+    messages,
+    maxTokens,
+    tools,
+    rounds = [],
+    toolChoice,
+  }: CompletionRequest) {
     return {
       model,
       // OpenAI caches stable prompt prefixes automatically (no marker needed),
@@ -40,6 +47,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): ChatProvid
             // With store: false, a reply that continues after a tool call must
             // send its reasoning back; the encrypted copy is how.
             include: ['reasoning.encrypted_content' as const],
+            ...(toolChoice === 'none' ? { tool_choice: 'none' as const } : {}),
           }
         : {}),
     };

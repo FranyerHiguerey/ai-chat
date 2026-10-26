@@ -23,6 +23,12 @@ export {
   type WidgetSettings,
 } from './config.js';
 export {
+  catalogItemSchema,
+  searchCatalog,
+  type CatalogItem,
+  type CatalogItemInput,
+} from './catalog.js';
+export {
   cachedSource,
   folderSource,
   staticSource,

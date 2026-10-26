@@ -1,5 +1,10 @@
 /** Builders for the parts of the panel that depend on content. */
-import type { HandoffChannel, LeadFields, SubmitLeadResult } from '@franyerhiguerey/ai-chat-client';
+import type {
+  CardItem,
+  HandoffChannel,
+  LeadFields,
+  SubmitLeadResult,
+} from '@franyerhiguerey/ai-chat-client';
 import type { Message, MessagePart, Starter } from '../types.js';
 import { textOf } from '../types.js';
 import { safeUrl } from '../markdown.js';
@@ -14,6 +19,8 @@ export interface ViewContext {
   strings: UiStrings;
   /** Sends a lead form shown under a message. */
   submitLead?: (messageId: string, lead: LeadFields) => Promise<SubmitLeadResult>;
+  /** Sends a message as the visitor (product cards' "Quote this"). */
+  send?: (text: string) => void;
 }
 
 export function initials(name: string): string {
@@ -193,11 +200,76 @@ export function chipsView(items: string[], onPick: (text: string) => void): HTML
 }
 
 function cardView(part: MessagePart, messageId: string, ctx: ViewContext): HTMLElement | undefined {
+  if (part.type === 'items') return itemsCard(part.items, ctx);
   if (part.type === 'handoff') return handoffCard(part.channels, ctx);
   if (part.type === 'lead_form') {
     return part.status === 'sent' ? leadSent(ctx) : leadForm(part.reason, messageId, ctx);
   }
   return undefined;
+}
+
+/** Product cards in a row that scrolls sideways; links and images are checked here too. */
+export function itemsCard(items: CardItem[], ctx: ViewContext): HTMLElement | undefined {
+  if (items.length === 0) return undefined;
+  const strings = ctx.strings.items;
+  return h(
+    'ul',
+    { class: 'items', 'aria-label': strings.label },
+    ...items.map((item) => {
+      const media = h('div', { class: 'item__media', 'aria-hidden': 'true' });
+      const fallback = () => media.replaceChildren(icon('package', 28));
+      const src = item.image && safeUrl(item.image);
+      if (src && /^https?:/.test(src)) {
+        const img = h('img', {
+          src,
+          alt: '',
+          loading: 'lazy',
+          decoding: 'async',
+          referrerpolicy: 'no-referrer',
+        });
+        img.addEventListener('error', fallback, { once: true });
+        media.append(img);
+      } else {
+        fallback();
+      }
+
+      const actions = h('div', { class: 'item__actions' });
+      const href = item.url && safeUrl(item.url);
+      if (href && /^https?:/.test(href)) {
+        actions.append(
+          h(
+            'a',
+            { class: 'btn btn--ghost', href, target: '_blank', rel: 'noopener noreferrer' },
+            strings.view,
+            srOnly(` ${item.name} ${ctx.strings.newTab}`),
+          ),
+        );
+      }
+      if (ctx.send) {
+        const quote = h(
+          'button',
+          { type: 'button', class: 'btn btn--primary' },
+          strings.quote,
+          srOnly(` ${item.name}`),
+        );
+        quote.addEventListener('click', () => ctx.send?.(strings.quoteMessage(item.name)));
+        actions.append(quote);
+      }
+
+      return h(
+        'li',
+        { class: 'item' },
+        media,
+        h(
+          'div',
+          { class: 'item__body' },
+          h('p', { class: 'item__name' }, item.name),
+          item.description && h('p', { class: 'item__text' }, item.description),
+        ),
+        actions,
+      );
+    }),
+  );
 }
 
 /** Buttons to reach the team. Links are built by the server and checked again here. */

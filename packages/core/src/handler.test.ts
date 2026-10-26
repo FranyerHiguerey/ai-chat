@@ -413,6 +413,31 @@ describe('createChatHandler with a source', () => {
     );
   });
 
+  it('rebuilds when the catalog changes and keeps the last good catalog when one is invalid', async () => {
+    const logger = vi.fn();
+    const good = { knowledge: [doc('x')], catalog: [{ id: 'f1', name: 'Frasco 250 ml' }] };
+    const { source, set } = mutableSource(good);
+    const { handler, calls } = setup({}, { source, logger });
+    await (await handler(post(question))).text();
+    expect(calls[0]?.request.tools?.[0]?.name).toBe('search_catalog');
+
+    set({
+      ...good,
+      catalog: [
+        { id: 'f1', name: 'A' },
+        { id: 'f1', name: 'B' },
+      ],
+    });
+    expect((await handler(post(question))).status).toBe(200);
+    expect(logger).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: 'source', message: expect.stringMatching(/Duplicate id/) }),
+    );
+
+    set({ knowledge: [doc('x')] });
+    await (await handler(post(question))).text();
+    expect(calls.at(-1)?.request.tools?.map((t) => t.name)).not.toContain('search_catalog');
+  });
+
   it('rejects knowledge over maxKnowledgeChars', async () => {
     const { source } = mutableSource({ knowledge: [doc('x'.repeat(200))] });
     const { handler } = setup(

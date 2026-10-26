@@ -290,6 +290,55 @@ describe('<ai-chat>', () => {
       expect($('.chips').hidden).toBe(true);
     });
 
+    it('renders product cards with safe links and sends a quote request', async () => {
+      const items = [
+        {
+          id: 'f250',
+          name: 'Frasco PEAD 250 ml',
+          description: 'Boca ancha',
+          url: 'https://acme.test/f250',
+          image: 'https://acme.test/f250.jpg',
+        },
+        { id: 'bad', name: 'Tapa T28', url: 'javascript:alert(1)', image: 'javascript:alert(2)' },
+      ];
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(
+          rich(frame('delta', { text: 'Tenemos estos.' }), frame('card', { kind: 'items', items })),
+        )
+        .mockResolvedValueOnce(sse(reply('Claro.')));
+      const { el, root } = mount({ open: '', lang: 'es' }, fetch);
+      el.send('¿Tienen frascos?');
+      await vi.waitFor(() => expect(root.querySelectorAll('.item')).toHaveLength(2));
+
+      const [good, bad] = [...root.querySelectorAll('.item')];
+      expect(text(good?.querySelector('.item__name'))).toBe('Frasco PEAD 250 ml');
+      expect(good?.querySelector<HTMLAnchorElement>('a')?.href).toBe('https://acme.test/f250');
+      expect(good?.querySelector('img')?.getAttribute('referrerpolicy')).toBe('no-referrer');
+      expect(bad?.querySelector('a')).toBeNull();
+      expect(bad?.querySelector('img')).toBeNull();
+      expect(bad?.querySelector('.item__media svg')).not.toBeNull();
+
+      good?.querySelector<HTMLButtonElement>('.btn--primary')?.click();
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body)).messages.at(-1).content).toBe(
+        'Quiero cotizar Frasco PEAD 250 ml',
+      );
+    });
+
+    it('falls back to the icon when a product image fails to load', async () => {
+      const items = [{ id: 'f', name: 'Frasco', image: 'https://acme.test/missing.jpg' }];
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(rich(frame('card', { kind: 'items', items })));
+      const { el, root } = mount({ open: '', lang: 'es' }, fetch);
+      el.send('Frascos');
+      await vi.waitFor(() => expect(root.querySelector('.item img')).not.toBeNull());
+      root.querySelector('.item img')?.dispatchEvent(new Event('error'));
+      expect(root.querySelector('.item img')).toBeNull();
+      expect(root.querySelector('.item__media svg')).not.toBeNull();
+    });
+
     it('renders handoff buttons with safe links only', async () => {
       const card = {
         kind: 'handoff',

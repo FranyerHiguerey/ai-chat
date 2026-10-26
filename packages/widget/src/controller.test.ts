@@ -282,6 +282,18 @@ describe('ChatController rich replies', () => {
     expect(controller.state.messages[1]?.parts.at(-1)).toMatchObject({ status: 'open' });
   });
 
+  it('keeps product cards with the reply and restores them', async () => {
+    const items = [{ id: 'f', name: 'Frasco' }];
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      sse(rich(frame('card', { kind: 'items', items }))),
+    );
+    const { controller, store } = setup(fetch);
+    controller.send('Frascos');
+    await idle(controller);
+    expect(controller.state.messages[1]?.parts).toEqual([{ type: 'items', items }]);
+    expect(restoreMessages(store.load())[1]?.parts).toEqual([{ type: 'items', items }]);
+  });
+
   it('restores saved rich parts and rejects malformed ones', () => {
     const good = { ...createMessage('assistant', 'Hola'), suggestions: ['a'] };
     good.parts.push({ type: 'handoff', channels: [{ type: 'email', href: 'mailto:a@b.co' }] });

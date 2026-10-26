@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { CatalogItemInput } from './catalog.js';
 import type { SiteSettingsInput } from './config.js';
 import { loadKnowledge, type KnowledgeDoc } from './knowledge.js';
 
@@ -8,6 +9,8 @@ export interface SourceData {
   /** Overrides `company`, `languages` and `widget` from the handler's config. */
   settings?: SiteSettingsInput;
   knowledge: KnowledgeDoc[];
+  /** Replaces `config.catalog`. Searched by the assistant, shown as product cards. */
+  catalog?: CatalogItemInput[];
 }
 
 /**
@@ -28,22 +31,23 @@ export function staticSource(
 }
 
 /**
- * A folder written by a dashboard: optional `settings.json` plus `.md` files.
+ * A folder written by a dashboard: optional `settings.json` and `catalog.json`, plus `.md` files.
  * Reads the disk on every load, so wrap it in `cachedSource`.
  */
 export function folderSource({ dir }: { dir: string }): ChatSource {
   return {
     async load() {
-      const [settings, knowledge] = await Promise.all([
-        readSettings(path.join(dir, 'settings.json')),
+      const [settings, catalog, knowledge] = await Promise.all([
+        readJson<SiteSettingsInput>(path.join(dir, 'settings.json')),
+        readJson<CatalogItemInput[]>(path.join(dir, 'catalog.json')),
         loadKnowledge(dir),
       ]);
-      return settings ? { settings, knowledge } : { knowledge };
+      return { knowledge, ...(settings && { settings }), ...(catalog && { catalog }) };
     },
   };
 }
 
-async function readSettings(file: string): Promise<SiteSettingsInput | undefined> {
+async function readJson<T>(file: string): Promise<T | undefined> {
   let raw: string;
   try {
     raw = await readFile(file, 'utf8');
@@ -51,8 +55,8 @@ async function readSettings(file: string): Promise<SiteSettingsInput | undefined
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;
   }
-  // Shape is checked by the handler, which reports every invalid field.
-  return JSON.parse(raw) as SiteSettingsInput;
+  // Shape is checked when the chat is built, which reports what's invalid.
+  return JSON.parse(raw) as T;
 }
 
 export interface CachedSourceOptions {

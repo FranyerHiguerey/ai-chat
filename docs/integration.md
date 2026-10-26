@@ -234,11 +234,56 @@ Other error codes: `too_large` (default 10 MB), `empty` (for example a scanned P
 
 Convert **when the owner uploads**, not during a chat: parsing is slow, and stored text keeps the prompt fast and stable. Store the result wherever the dashboard keeps data and return it from the source.
 
-## 4. Catalog import (planned: M7)
+## 4. Catalog
 
-A `CatalogItem` schema (id, name, description, price, currency, url, image, tags) and `parseCatalog(csv | json)` in ai-chat-ingest, which returns row-level errors for the dashboard to show.
+Give the assistant a product catalog and it shows matching products as cards, each with a **View** link (when the product has a page) and a **Quote this** button that asks for a quote, which leads into the lead form.
 
-A small catalog is added to the knowledge. A large one stays out of the prompt and is reached through the M7 `search_catalog` tool, whose results the widget renders as item cards.
+```ts
+// Code path: inline, or loaded from a file
+defineConfig({
+  /* ... */ catalog: [
+    { id: 'f250', name: 'Frasco PEAD 250 ml', attributes: { capacidad: '250 ml' } },
+  ],
+});
+
+// Dashboard path: return it from a source; it replaces config.catalog
+staticSource(async () => ({ settings, knowledge, catalog: await db.getProducts(siteId) }));
+```
+
+`folderSource` also reads a `catalog.json` from its folder.
+
+| Field                       | Notes                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| `id`                        | Unique, up to 80 characters                                                     |
+| `name`                      | Required                                                                        |
+| `description`               | Optional, shown on the card (2 lines)                                           |
+| `price`, `currency`, `unit` | Optional. Never shown on the card; the model may mention it in its answer       |
+| `url`, `image`              | Optional, http(s) only                                                          |
+| `tags`                      | Searchable labels, e.g. `["frascos", "alimentos"]`                              |
+| `attributes`                | Anything else to match on, e.g. `{ "capacidad": "250 ml", "material": "PEAD" }` |
+
+**How it works.** When the visitor asks about products, the model calls `search_catalog` with a few keywords. The server matches them against names (strongest), tags, then descriptions and attributes, ignoring accents and plurals, and shows the top 4 as cards. The same items go back to the model, which answers from them in a second model call (it reads the cached prompt, like the lead form). No match means no card and an honest "we don't have that".
+
+**The catalog stays out of the prompt**: only the search tool reaches it, so a 5,000-item catalog (`limits.maxCatalogItems`) costs the same per message as a small one. An invalid catalog (bad URL, duplicate id) is logged and the last good version keeps serving.
+
+### Importing from a spreadsheet
+
+`parseCatalog(text)` in `@franyerhiguerey/ai-chat-ingest` reads CSV (comma or semicolon, as Excel exports in Spanish) or JSON and returns `{ items, errors }`, with a row number for every skipped row:
+
+| Column (any of)                              | Becomes                                |
+| -------------------------------------------- | -------------------------------------- |
+| id, sku, código, code, ref, referencia       | `id` (a slug of the name when missing) |
+| name, nombre, producto, product, title       | `name`                                 |
+| description, descripción                     | `description`                          |
+| price, precio (`0,25`, `1.234,50`, `$12.50`) | `price`                                |
+| currency, moneda                             | `currency`                             |
+| unit, unidad                                 | `unit`                                 |
+| url, link, enlace, página                    | `url`                                  |
+| image, imagen, foto, photo                   | `image`                                |
+| tags, etiquetas, categoría (split by `       | `)                                     | `tags` |
+| anything else                                | `attributes`                           |
+
+`examples/admin` has a Catalog page that does this, with [a sample file](../examples/admin/sample-catalog.csv) containing a bad row on purpose.
 
 ## 5. Visitor attachments (planned: M8)
 
@@ -258,6 +303,7 @@ Uploads add storage and token cost per visitor, so they get their own size, coun
 
 - **Settings:** a hand-written form, validated with `validateSiteSettings`, errors shown per field.
 - **Knowledge:** upload (md, txt, HTML, PDF, DOCX through ai-chat-ingest), list with the character budget, delete.
+- **Catalog:** import a CSV or JSON catalog with row-level errors, list it, clear it.
 - **Preview:** the widget with `remote-config`, and an embed snippet to copy.
 - Everything is stored in `examples/admin/data/` (`settings.json` plus `.md` files, copied from `seed/` on first run) and read by `cachedSource(folderSource(...))` with a 5-second TTL.
 - Admin routes need HTTP Basic auth. Their POSTs must come from the dashboard's own origin, because browsers resend Basic credentials automatically, which would otherwise allow cross-site form posts.
@@ -266,11 +312,11 @@ A real dashboard brings its own authentication, storage and hosting.
 
 ## Roadmap
 
-| Milestone | Scope                                                                                                    |
-| --------- | -------------------------------------------------------------------------------------------------------- |
-| M5        | Guardrails: rate limit, origin/CORS, caps, usage logging (done)                                          |
-| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin` (done)                          |
-| M7        | Tools and rich UI: M7a suggestions, handoff card, lead form (done); M7b catalog, search tool, item cards |
-| M8        | Visitor attachments (protocol v2)                                                                        |
-| M9        | Express adapter, Astro example, first real site integration                                              |
-| M10       | Docs, CI, npm release                                                                                    |
+| Milestone | Scope                                                                                            |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| M5        | Guardrails: rate limit, origin/CORS, caps, usage logging (done)                                  |
+| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin` (done)                  |
+| M7        | Tools and rich UI: suggestions, handoff card, lead form, catalog search and product cards (done) |
+| M8        | Visitor attachments (protocol v2)                                                                |
+| M9        | Express adapter, Astro example, first real site integration                                      |
+| M10       | Docs, CI, npm release                                                                            |

@@ -1,5 +1,6 @@
 import type {
   Card,
+  CardItem,
   ChatMessage,
   HandoffChannel,
   Language,
@@ -15,6 +16,7 @@ import { parseSSE } from './sse.js';
 export { parseSSE, type SSEMessage } from './sse.js';
 export type {
   Card,
+  CardItem,
   ChatMessage,
   HandoffChannel,
   Language,

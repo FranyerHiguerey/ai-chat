@@ -1,6 +1,6 @@
 # @franyerhiguerey/ai-chat-ingest
 
-Turns files a site owner uploads into ai-chat knowledge documents. Node only. Use it in your dashboard's upload handler, then hand the documents to the chat through a source (see [docs/integration.md](../../docs/integration.md)).
+Turns files a site owner uploads into ai-chat knowledge documents and catalogs. Node only. Use it in your dashboard's upload handler, then hand the documents to the chat through a source (see [docs/integration.md](../../docs/integration.md)).
 
 ```sh
 pnpm add @franyerhiguerey/ai-chat-ingest
@@ -36,3 +36,14 @@ The type comes from the file extension, then from `type` (MIME).
 **File names.** `doc.file` is a lowercase slug ending in `.md` (`safeFileName()`), so it is safe as a file name or key: `../../etc/passwd` becomes `etc-passwd.md`.
 
 Convert at upload time, not per chat: parsing is slow, and stored text keeps the bot's prompt fast and identical between requests, which prompt caching needs.
+
+## Catalogs
+
+```ts
+import { parseCatalog } from '@franyerhiguerey/ai-chat-ingest';
+
+const { items, errors } = parseCatalog(await file.text()); // CSV or JSON
+// errors: [{ row: 4, message: 'price "abc" is not a number' }], the other rows still import
+```
+
+CSV follows RFC 4180 (quotes, newlines in quotes), with `,` or `;` detected from the header. Column names are matched in Spanish and English (`nombre`/`name`, `precio`/`price`, `enlace`/`url`…); unknown columns become searchable `attributes`. Prices like `0,25` or `1.234,50` are read as numbers. Links must be http(s). A duplicated id keeps its first row. See [docs/integration.md](../../docs/integration.md#4-catalog) for the full column list.

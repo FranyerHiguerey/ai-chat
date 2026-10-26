@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { catalogItemSchema } from './catalog.js';
 
 export const LANGUAGES = ['es', 'en'] as const;
 export type Language = (typeof LANGUAGES)[number];
@@ -112,6 +113,8 @@ export const configSchema = z.object({
   company: companySchema,
   /** Folder of `.md` files. Optional when a source supplies the knowledge. */
   knowledgeDir: z.string().min(1).optional(),
+  /** Products the assistant can search and show as cards. A source's catalog replaces it. */
+  catalog: z.array(catalogItemSchema).optional(),
   languages: languagesSchema,
   widget: widgetSchema,
   features: z
@@ -144,6 +147,8 @@ export const configSchema = z.object({
       dailyTokenBudget: z.number().int().nonnegative().default(1_000_000),
       /** All knowledge documents together. Every request sends them, so this bounds its cost. */
       maxKnowledgeChars: z.number().int().positive().default(200_000),
+      /** Catalog items. They stay out of the prompt (the search tool reaches them), so this only bounds memory. */
+      maxCatalogItems: z.number().int().positive().default(5_000),
     })
     .default({}),
   /** Sites allowed to embed the chat. Empty: only the endpoint's own origin. */

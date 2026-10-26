@@ -1,4 +1,4 @@
-import type { ValidationIssue } from '@franyerhiguerey/ai-chat-core';
+import type { CatalogItem, ValidationIssue } from '@franyerhiguerey/ai-chat-core';
 import { html, type Html } from './html.js';
 
 /** The settings form's fields. `name` is the dotted path in the site settings. */
@@ -99,6 +99,7 @@ function layout(title: string, current: string, body: Html): Html {
   const nav = [
     ['/admin', 'Settings'],
     ['/admin/knowledge', 'Knowledge'],
+    ['/admin/catalog', 'Catalog'],
     ['/admin/preview', 'Preview'],
   ].map(
     ([href, label]) =>
@@ -365,5 +366,68 @@ export function previewPage(origin: string): Html {
       </div>
       <script src="/widget.js" defer></script>
       <ai-chat endpoint="/api/chat" remote-config></ai-chat>`,
+  );
+}
+
+export interface CatalogImport {
+  file: string;
+  imported: number;
+  errors: { row: number | string; message: string }[];
+}
+
+export function catalogPage(items: CatalogItem[], result?: CatalogImport, error?: string): Html {
+  return layout(
+    'Catalog',
+    '/admin/catalog',
+    html`<h1>Catalog</h1>
+      ${error ? html`<div class="notice notice--error">${error}</div>` : ''}
+      ${
+        result
+          ? html`<div class="notice">
+              ${result.file}: ${result.imported} products
+              imported${
+                result.errors.length
+                  ? html`, ${result.errors.length} rows skipped:
+                      <ul>
+                        ${result.errors.map((e) => html`<li>Row ${e.row}: ${e.message}</li>`)}
+                      </ul>`
+                  : '.'
+              }
+            </div>`
+          : ''
+      }
+      <form method="post" action="/admin/catalog" enctype="multipart/form-data" class="card">
+        <label for="file">Import a catalog</label>
+        <input id="file" type="file" name="file" accept=".csv,.json" required />
+        <div class="hint">
+          CSV or JSON. Columns: name (required), id or sku, description, price, currency, unit, url,
+          image, tags (split with |). Other columns become searchable attributes. Importing replaces
+          the catalog.
+        </div>
+        <button>Import</button>
+      </form>
+      <div class="card">
+        <table>
+          ${items.map(
+            (item) =>
+              html`<tr>
+                <td>${item.name}</td>
+                <td class="hint">${item.id}</td>
+                <td class="hint">${item.tags.join(', ')}</td>
+              </tr>`,
+          )}
+        </table>
+        <p class="hint">
+          ${items.length.toLocaleString('en')} products. The assistant searches them; they aren't
+          added to every message, so a large catalog doesn't raise the cost per chat.
+        </p>
+        ${
+          items.length
+            ? html`<form method="post" action="/admin/catalog/clear">
+                <button class="link">Clear catalog</button>
+              </form>`
+            : ''
+        }
+      </div>`,
   );
 }

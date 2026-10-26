@@ -209,6 +209,21 @@ describe('anthropic provider tools', () => {
 });
 
 describe('anthropic provider tool rounds', () => {
+  it('maps toolChoice none to tool_choice', async () => {
+    const { create, provider } = setup(fakeResponse());
+    const tools = [
+      {
+        name: 't',
+        description: 'd',
+        parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+      },
+    ];
+    await provider.complete({ system, messages, maxTokens: 1024, tools, toolChoice: 'none' });
+    expect(create.mock.calls[0]?.[0].tool_choice).toEqual({ type: 'none' });
+    await provider.complete({ system, messages, maxTokens: 1024, tools });
+    expect(create.mock.calls[1]?.[0]).not.toHaveProperty('tool_choice');
+  });
+
   it('replays a round as the assistant content, then all results in one user turn', async () => {
     const { create, provider } = setup(fakeResponse());
     const replay = [

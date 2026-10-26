@@ -120,10 +120,11 @@ Every `widget` field is optional (`name`, `avatar`, `greeting`, `starters`, `tea
 
 A `card` event carries one of these, told apart by `kind`. The server builds every link from the site's config; the model never writes them.
 
-| `kind`      | Fields                                                    | What to show                                                                                          |
-| ----------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `handoff`   | `channels`: `[{ "type": "whatsapp" \| "email", "href" }]` | Buttons to reach the team. `href` is a `https://wa.me/…` or `mailto:` link with the request prefilled |
-| `lead_form` | `reason`: why it's shown, in the visitor's language       | A contact form (name, email or phone, message), sent as a lead (below)                                |
+| `kind`      | Fields                                                         | What to show                                                                                          |
+| ----------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `items`     | `items`: `[{ id, name, description?, url?, image? }]`, up to 4 | Product cards from the site's catalog. `url` and `image` are http(s); show no price (sites quote)     |
+| `handoff`   | `channels`: `[{ "type": "whatsapp" \| "email", "href" }]`      | Buttons to reach the team. `href` is a `https://wa.me/…` or `mailto:` link with the request prefilled |
+| `lead_form` | `reason`: why it's shown, in the visitor's language            | A contact form (name, email or phone, message), sent as a lead (below)                                |
 
 ```
 event: card

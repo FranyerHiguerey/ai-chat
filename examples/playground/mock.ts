@@ -3,7 +3,8 @@
  * It streams a canned markdown reply in small chunks, then reply chips. Words
  * in the last message pick other scenarios: "error", "busy"/"demanda",
  * "limit"/"límite", "cut"/"corte", "network"/"red", "slow"/"lento", plus the
- * cards: "humano"/"whatsapp"/"person" (handoff) and "cotiz"/"quote" (lead form).
+ * cards: "producto"/"catálogo"/"frasco"/"product" (product cards),
+ * "humano"/"whatsapp"/"person" (handoff) and "cotiz"/"quote" (lead form).
  * A lead sent with the name "error" fails, any other succeeds.
  */
 const REPLIES = {
@@ -31,6 +32,22 @@ const SUGGESTIONS = {
   es: ['¿Cuál es el pedido mínimo?', '¿Hacen envíos a todo el país?'],
   en: ["What's the minimum order?", 'Do you ship nationwide?'],
 };
+
+const ITEMS = [
+  {
+    id: 'pead-250',
+    name: 'Frasco PEAD 250 ml',
+    description: 'Boca ancha 63 mm, para cremas y suplementos.',
+    url: 'https://example.com/productos/frasco-250',
+  },
+  {
+    id: 'pead-500',
+    name: 'Frasco PEAD 500 ml',
+    description: 'Boca ancha 63 mm.',
+    url: 'https://example.com/productos/frasco-500',
+  },
+  { id: 'tapa-t63', name: 'Tapa T63', description: 'Rosca para frascos de boca ancha.' },
+];
 
 const CARDS = {
   handoff: {
@@ -117,6 +134,9 @@ export async function handleMockChat(request: Request): Promise<Response> {
         // "network": close without done, as a dropped connection would.
         if (network) return controller.close();
         if (!cut) {
+          if (has('producto', 'catálogo', 'catalogo', 'frasco', 'product')) {
+            send(frame('card', { kind: 'items', items: ITEMS }));
+          }
           if (has('humano', 'whatsapp', 'person')) {
             const text = encodeURIComponent(CARDS.handoff[lang]);
             send(

@@ -1,0 +1,7 @@
+sku;nombre;descripción;capacidad;material;categoría;enlace
+J250;Frasco 250 ml;Boca ancha, para cremas y alimentos;250 ml;PEAD;frascos|alimentos;https://acme.example/frasco-250
+J500;Frasco 500 ml;Boca ancha;500 ml;PEAD;frascos;https://acme.example/frasco-500
+B500;Botella 500 ml;Para agua y jugos;500 ml;PET;botellas|bebidas;https://acme.example/botella-500
+B1L;Botella 1 L;Para agua y jugos;1 L;PET;botellas|bebidas;
+;;;;;;
+C28;Tapa 28 mm;Rosca con banda de seguridad;;PP;tapas;no-es-un-enlace

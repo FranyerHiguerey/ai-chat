@@ -1,4 +1,4 @@
-import type { HandoffChannel } from '@franyerhiguerey/ai-chat-client';
+import type { CardItem, HandoffChannel } from '@franyerhiguerey/ai-chat-client';
 
 export type Language = 'es' | 'en';
 
@@ -34,6 +34,7 @@ export interface WidgetConfig {
 /** What a reply is made of: its text, then any cards the server sent with it. */
 export type MessagePart =
   | { type: 'text'; text: string }
+  | { type: 'items'; items: CardItem[] }
   | { type: 'handoff'; channels: HandoffChannel[] }
   | { type: 'lead_form'; reason: string; status: 'open' | 'sent' };
 

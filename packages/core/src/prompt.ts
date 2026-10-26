@@ -5,7 +5,7 @@ import type { SystemPrompt } from './types.js';
 
 const LANGUAGE_NAMES: Record<Language, string> = { es: 'Spanish', en: 'English' };
 
-function instructions(config: ChatConfig): string {
+function instructions(config: ChatConfig, catalogSize: number): string {
   const { company, languages } = config;
   const supported = languages.supported.map((lang) => LANGUAGE_NAMES[lang]).join(' or ');
   const fallback = LANGUAGE_NAMES[languages.default];
@@ -23,7 +23,7 @@ function instructions(config: ChatConfig): string {
   if (languages.tone) {
     lines.push(`- Tone: ${languages.tone}`);
   }
-  lines.push(...toolInstructions(toolsFor(config)));
+  lines.push(...toolInstructions(toolsFor(config, catalogSize)));
   return lines.join('\n');
 }
 
@@ -54,6 +54,14 @@ function knowledgeSection(config: ChatConfig, docs: KnowledgeDoc[]): string {
  * bytes stay identical between requests and the cached prefix keeps hitting.
  * Each provider decides how to mark the cache boundary.
  */
-export function buildSystemPrompt(config: ChatConfig, docs: KnowledgeDoc[]): SystemPrompt {
-  return { instructions: instructions(config), knowledge: knowledgeSection(config, docs) };
+export function buildSystemPrompt(
+  config: ChatConfig,
+  docs: KnowledgeDoc[],
+  /** Products don't go in the prompt; their count only decides whether search is offered. */
+  catalogSize = 0,
+): SystemPrompt {
+  return {
+    instructions: instructions(config, catalogSize),
+    knowledge: knowledgeSection(config, docs),
+  };
 }

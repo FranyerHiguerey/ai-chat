@@ -113,7 +113,7 @@ Methods: `show()`, `hide()`, `toggle()`, `send(text)`, `reset()`.
 
 ## Behavior
 
-- **Rich replies:** under an answer the server can add reply chips (shown only under the latest reply; tapping one sends it), a "talk to our team" card with WhatsApp and email buttons, and an inline lead form with per-field validation, a sending state and a confirmation. They follow the theme tokens and dark mode; `--chat-whatsapp` sets the WhatsApp button color. See [docs/integration.md](../../docs/integration.md#reply-chips-handoff-and-leads) to turn them on.
+- **Rich replies:** under an answer the server can add product cards (a sideways-scrolling row with photo, name, description, a View link and a Quote this button that asks for a quote), reply chips (shown only under the latest reply; tapping one sends it), a "talk to our team" card with WhatsApp and email buttons, and an inline lead form with per-field validation, a sending state and a confirmation. They follow the theme tokens and dark mode; `--chat-whatsapp` sets the WhatsApp button color. See [docs/integration.md](../../docs/integration.md#reply-chips-handoff-and-leads) to turn them on.
 
 - **Persistence:** the conversation and open state live in `sessionStorage` per endpoint, so they survive navigation but not a closed tab. Without storage (privacy mode, sandboxed iframes) everything still works in memory.
 - **Stop:** the visitor keeps the partial reply. If nothing had arrived, the question goes back into the input.

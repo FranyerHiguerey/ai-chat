@@ -39,6 +39,12 @@ describe('folderSource', () => {
     expect(data.knowledge.map((doc) => doc.file)).toEqual(['faq.md']);
   });
 
+  it('reads catalog.json when present', async () => {
+    const catalog = [{ id: 'f250', name: 'Frasco 250 ml' }];
+    await writeFile(path.join(dir, 'catalog.json'), JSON.stringify(catalog));
+    expect((await folderSource({ dir }).load()).catalog).toEqual(catalog);
+  });
+
   it('fails on malformed settings.json', async () => {
     await writeFile(path.join(dir, 'settings.json'), '{oops');
     await expect(folderSource({ dir }).load()).rejects.toThrow(SyntaxError);
