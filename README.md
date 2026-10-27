@@ -1,5 +1,7 @@
 # ai-chat
 
+[![CI](https://github.com/FranyerHiguerey/ai-chat/actions/workflows/ci.yml/badge.svg)](https://github.com/FranyerHiguerey/ai-chat/actions/workflows/ci.yml)
+
 A white-label AI chat assistant you can drop into any website. Each site brings its own
 content (company info, FAQ, services, product catalog) and its own API key, which stays
 on the site's server and never reaches the browser. It works with Claude (default) or
@@ -12,7 +14,7 @@ OpenAI.
 - **Editable without code**: a site's own dashboard or CMS can feed settings, knowledge and catalog through a source.
 - **Works anywhere**: a web-standard `Request => Response` handler (Astro, Next.js, Hono, serverless), a zero-dependency `<ai-chat>` Web Component, and a React wrapper. Spanish and English.
 
-> **Status:** v0.1.3, pre-1.0, so the API can still change. Not on npm yet: install from the [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) (below).
+> **Status:** v0.1.3, pre-1.0, so the API can still change. In production at [hisiverplast.com](https://hisiverplast.com) ([case study](docs/case-study.md)). Not on npm yet: install from the [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) (below).
 
 ## Packages
 
@@ -79,6 +81,8 @@ Use `@anthropic-ai/sdk` instead of `openai` for Claude. Add `ai-chat-react`, `ai
 
 - [Integration guide](docs/integration.md): frameworks, guardrails, dashboards and sources, uploads, catalog, chips/handoff/leads.
 - [Protocol](docs/protocol.md): the SSE events, cards, leads and webhook signatures, for writing your own client.
+- [Releasing](docs/releasing.md): CI, tag-driven releases and npm publishing.
+- [Case study](docs/case-study.md): the architecture, the decisions behind it and the first production deployment.
 - [Widget](packages/widget/README.md) and [React](packages/react/README.md) options.
 
 ## Development

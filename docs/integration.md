@@ -79,7 +79,7 @@ app.post('/api/chat', (c) => handler(c.req.raw, { clientIp: c.env.incoming.socke
 
 ### Express
 
-Express does not use web-standard requests; an adapter is planned for M9.
+Express does not use web-standard requests; an adapter is planned. Until then, serve the handler on Node with `@hono/node-server` (see Hono above), as the hisiverplast.com deployment does.
 
 ### The widget
 
@@ -312,11 +312,11 @@ A real dashboard brings its own authentication, storage and hosting.
 
 ## Roadmap
 
-| Milestone | Scope                                                                                            |
-| --------- | ------------------------------------------------------------------------------------------------ |
-| M5        | Guardrails: rate limit, origin/CORS, caps, usage logging (done)                                  |
-| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin` (done)                  |
-| M7        | Tools and rich UI: suggestions, handoff card, lead form, catalog search and product cards (done) |
-| M8        | Visitor attachments (protocol v2)                                                                |
-| M9        | Express adapter, Astro example, first real site integration                                      |
-| M10       | Docs, CI, npm release                                                                            |
+| Milestone | Scope                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------ |
+| M5        | Guardrails: rate limit, origin/CORS, caps, usage logging (done)                                                    |
+| M6        | Sources, form helpers, public settings, ai-chat-ingest, `examples/admin` (done)                                    |
+| M7        | Tools and rich UI: suggestions, handoff card, lead form, catalog search and product cards (done)                   |
+| M8        | Visitor attachments (protocol v2)                                                                                  |
+| M9        | Express adapter, Astro example, first real site integration (site done: hisiverplast.com; Express adapter pending) |
+| M10       | Docs, CI, npm release (CI and release workflow done; first npm publish pending)                                    |

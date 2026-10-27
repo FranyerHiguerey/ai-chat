@@ -1,0 +1,67 @@
+name: Release
+
+# Push a tag like v0.2.0 (after bumping every package and the CHANGELOG):
+#   git tag v0.2.0 && git push origin v0.2.0
+# This runs the full gate, creates the GitHub release with the five tarballs,
+# and publishes the packages to npm with provenance when NPM_TOKEN is set.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # create the GitHub release
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Tag matches every package version
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          for f in packages/*/package.json; do
+            have=$(node -p "require('./$f').version")
+            [ "$have" = "$want" ] || { echo "::error file=$f::version $have, tag says $want"; exit 1; }
+          done
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --check .
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      - name: Pack
+        run: |
+          mkdir -p dist-release
+          pnpm -r --filter './packages/*' pack --pack-destination dist-release
+          ls dist-release
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # This version's CHANGELOG section becomes the release notes.
+          awk -v v="$version" '$0 ~ "^## "v" " {on=1; next} /^## / && on {exit} on' CHANGELOG.md > notes.md
+          printf '\n## Install\n\n`pnpm add @franyerhiguerey/ai-chat-core @franyerhiguerey/ai-chat-widget`, or straight from the tarballs below (see the README).\n' >> notes.md
+          gh release create "$GITHUB_REF_NAME" dist-release/*.tgz --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+
+      - name: Publish to npm
+        if: ${{ env.NPM_TOKEN != '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+        # Already-published versions are skipped, so a re-run is safe.
+        run: pnpm -r --filter './packages/*' publish --access public --no-git-checks

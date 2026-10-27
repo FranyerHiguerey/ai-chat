@@ -32,6 +32,10 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "sideEffects": [
     "./dist/index.js",
     "./dist/ai-chat.global.js"

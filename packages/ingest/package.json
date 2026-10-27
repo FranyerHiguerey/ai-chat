@@ -32,6 +32,10 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "sideEffects": false,
   "engines": {
     "node": ">=20"
