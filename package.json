@@ -15,7 +15,8 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "playground": "turbo run build --filter=playground^... && pnpm --filter playground dev",
-    "admin": "turbo run build --filter=admin^... && pnpm --filter admin dev"
+    "admin": "turbo run build --filter=admin^... && pnpm --filter admin dev",
+    "release:npm": "pnpm install --frozen-lockfile && prettier --check . && pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm -r --filter './packages/*' publish --access public"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

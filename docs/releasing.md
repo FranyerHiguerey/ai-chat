@@ -14,7 +14,22 @@ A release is a tag. [release.yml](../.github/workflows/release.yml) does the res
 
 The workflow checks that the tag matches every package version, runs the full gate again, creates the GitHub release with the five tarballs and, when the `NPM_TOKEN` secret exists, publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements). Versions already on npm are skipped, so re-running a failed release is safe.
 
-## npm setup (once)
+## Publishing from your machine
+
+This needs no GitHub Actions, only an npm account.
+
+1. Once: `npm login` (opens the browser; the account must be `franyerhiguerey`, the name of the `@franyerhiguerey` scope). Turn on two-factor authentication on npmjs.com.
+2. Bump the versions and the CHANGELOG as above, and commit.
+3. Run:
+   ```bash
+   pnpm release:npm
+   ```
+   It installs, runs the full gate (Prettier, build, typecheck, lint, tests) and only then publishes the five packages. With two-factor on, npm asks for a code or opens the browser. Versions already on npm are skipped.
+4. Tag the commit and push it: `git tag v0.2.0 && git push origin main v0.2.0`.
+
+Packages published this way have no [provenance](https://docs.npmjs.com/generating-provenance-statements) statement: npm only creates it inside CI.
+
+## npm setup for CI (once)
 
 1. Sign in to [npmjs.com](https://www.npmjs.com) as `franyerhiguerey` (the account name is the `@franyerhiguerey` scope) and turn on two-factor authentication.
 2. **Access Tokens → Generate New Token → Granular Access Token**: read and write, packages and scopes `@franyerhiguerey`, an expiry you will remember. On the first publish the packages don't exist yet, so give it access to all packages of the scope.

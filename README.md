@@ -1,7 +1,5 @@
 # ai-chat
 
-[![CI](https://github.com/FranyerHiguerey/ai-chat/actions/workflows/ci.yml/badge.svg)](https://github.com/FranyerHiguerey/ai-chat/actions/workflows/ci.yml)
-
 A white-label AI chat assistant you can drop into any website. Each site brings its own
 content (company info, FAQ, services, product catalog) and its own API key, which stays
 on the site's server and never reaches the browser. It works with Claude (default) or
