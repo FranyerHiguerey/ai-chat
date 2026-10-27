@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 (2026-10-27)
+
+- **Fix (widget):** in 0.1.2, scrolling the mouse wheel over the product cards did nothing: the card row contained overscroll on both axes, which swallowed vertical wheel input. It now contains only the horizontal axis, so the conversation scrolls normally under the pointer. Found by testing the real site in Chrome with real smooth scrolling.
+
 ## 0.1.2 (2026-10-27)
 
 - **Widget:** on pages with smooth scrolling (Lenis and similar), wheel and touch events inside the open chat no longer reach the page, so the conversation scrolls instead of the page. On a phone the page behind the full-screen chat no longer rubber-bands.

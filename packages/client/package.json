@@ -1,6 +1,6 @@
 {
   "name": "@franyerhiguerey/ai-chat-client",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Browser client for ai-chat: streams replies from an ai-chat endpoint",
   "keywords": [
     "chatbot",

@@ -247,7 +247,8 @@ a { color: inherit; }
   list-style: none; margin: 0; padding: 2px 2px 6px; width: 100%;
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 72%);
   gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: thin;
-  overscroll-behavior: contain;
+  /* Only sideways: a vertical wheel over the cards must keep scrolling the conversation. */
+  overscroll-behavior-x: contain;
 }
 .items:has(> :only-child) { grid-auto-columns: minmax(200px, 100%); }
 .item {

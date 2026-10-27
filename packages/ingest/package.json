@@ -1,6 +1,6 @@
 {
   "name": "@franyerhiguerey/ai-chat-ingest",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Turns uploaded files (md, txt, HTML, PDF, DOCX) into ai-chat knowledge documents",
   "keywords": [
     "chatbot",
