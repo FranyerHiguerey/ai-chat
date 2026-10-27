@@ -131,7 +131,9 @@ export function parseCsv(text: string): string[][] {
 
 const isBlank = (cells: string[]) => cells.every((cell) => cell.trim() === '');
 
-const isHttpUrl = (value: string) => {
+/** An absolute http(s) URL, or a root-relative path on the site (`/images/x.webp`). */
+const isLink = (value: string) => {
+  if (/^\/(?![/\\])/.test(value)) return !/\s/.test(value);
   try {
     return ['http:', 'https:'].includes(new URL(value).protocol);
   } catch {
@@ -179,8 +181,8 @@ function toItem(record: Record<string, unknown>): CatalogItem | string {
       const price = typeof rawValue === 'number' ? rawValue : parsePrice(value);
       if (price === undefined) return `price "${value}" is not a number`;
       item.price = price;
-    } else if ((field === 'url' || field === 'image') && !isHttpUrl(value)) {
-      return `${field} "${value}" is not an http(s) link`;
+    } else if ((field === 'url' || field === 'image') && !isLink(value)) {
+      return `${field} "${value}" is not an http(s) link or a path starting with /`;
     } else {
       item[field] = value;
     }

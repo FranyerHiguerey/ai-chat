@@ -1,9 +1,21 @@
 import { z } from 'zod';
 
-const httpUrl = z
+/** An absolute http(s) URL, or a root-relative path on the page hosting the widget (`/images/x.webp`). */
+export function isCatalogLink(value: string): boolean {
+  // No spaces or control characters anywhere in a link.
+  if (value.length > 500 || [...value].some((char) => char.charCodeAt(0) <= 32)) return false;
+  // A single leading slash: `//host` and `/\host` would leave the site.
+  if (/^\/(?![/\\])/.test(value)) return true;
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+const catalogLink = z
   .string()
-  .url()
-  .refine((value) => /^https?:\/\//i.test(value), 'Use an http or https URL');
+  .refine(isCatalogLink, 'Use an http(s) URL or a path starting with a single /');
 
 /** One product or service. Only `id` and `name` are required. */
 export const catalogItemSchema = z.object({
@@ -18,8 +30,8 @@ export const catalogItemSchema = z.object({
     .transform((value) => value.toUpperCase())
     .optional(),
   unit: z.string().trim().max(40).optional(),
-  url: httpUrl.optional(),
-  image: httpUrl.optional(),
+  url: catalogLink.optional(),
+  image: catalogLink.optional(),
   tags: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
   /** Anything else worth matching on, e.g. `{ capacidad: "250 ml", material: "PEAD" }`. */
   attributes: z.record(z.string().max(200)).default({}),

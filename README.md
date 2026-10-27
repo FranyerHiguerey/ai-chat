@@ -12,7 +12,7 @@ OpenAI.
 - **Editable without code**: a site's own dashboard or CMS can feed settings, knowledge and catalog through a source.
 - **Works anywhere**: a web-standard `Request => Response` handler (Astro, Next.js, Hono, serverless), a zero-dependency `<ai-chat>` Web Component, and a React wrapper. Spanish and English.
 
-> **Status:** v0.1.1, pre-1.0, so the API can still change. Not on npm yet: install from the [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) (below).
+> **Status:** v0.1.2, pre-1.0, so the API can still change. Not on npm yet: install from the [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) (below).
 
 ## Packages
 
@@ -31,8 +31,8 @@ Until the npm release, add the packages you use straight from the release, plus 
 ```json
 {
   "dependencies": {
-    "@franyerhiguerey/ai-chat-core": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.1/franyerhiguerey-ai-chat-core-0.1.1.tgz",
-    "@franyerhiguerey/ai-chat-widget": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.1/franyerhiguerey-ai-chat-widget-0.1.1.tgz",
+    "@franyerhiguerey/ai-chat-core": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.2/franyerhiguerey-ai-chat-core-0.1.2.tgz",
+    "@franyerhiguerey/ai-chat-widget": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.2/franyerhiguerey-ai-chat-widget-0.1.2.tgz",
     "openai": "^7.43.0"
   }
 }

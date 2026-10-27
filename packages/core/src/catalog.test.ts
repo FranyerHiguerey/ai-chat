@@ -74,6 +74,28 @@ describe('catalog schema', () => {
     expect(parsed).toMatchObject({ currency: 'USD', tags: [], attributes: {} });
   });
 
+  it('accepts root-relative paths for images and links, but nothing that leaves the site', () => {
+    const ok = catalogItemSchema.safeParse({
+      id: 'a',
+      name: 'A',
+      image: '/images/chat/a.webp',
+      url: '/#productos',
+    });
+    expect(ok.success).toBe(true);
+    for (const bad of [
+      '//evil.test/a.png',
+      '/\\evil.test/a.png',
+      'images/a.png',
+      '/a b.png',
+      'data:image/png;base64,AAAA',
+      'javascript:alert(1)',
+    ]) {
+      expect(catalogItemSchema.safeParse({ id: 'a', name: 'A', image: bad }).success, bad).toBe(
+        false,
+      );
+    }
+  });
+
   it('rejects unsafe links, duplicate ids and catalogs over the cap', () => {
     expect(
       catalogItemSchema.safeParse({ id: 'a', name: 'A', url: 'javascript:alert(1)' }).success,

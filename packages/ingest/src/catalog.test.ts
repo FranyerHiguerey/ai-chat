@@ -59,14 +59,27 @@ describe('parseCatalog', () => {
     expect(errors).toEqual([
       { row: 3, message: 'name is missing' },
       { row: 4, message: 'price "abc" is not a number' },
-      { row: 5, message: 'url "javascript:alert(1)" is not an http(s) link' },
+      {
+        row: 5,
+        message: 'url "javascript:alert(1)" is not an http(s) link or a path starting with /',
+      },
     ]);
   });
 
   it('numbers rows like the spreadsheet, counting blank rows', () => {
     const csv = 'name,url\nJar,\n,\n\nCap,not-a-link';
     expect(parseCatalog(csv).errors).toEqual([
-      { row: 5, message: 'url "not-a-link" is not an http(s) link' },
+      { row: 5, message: 'url "not-a-link" is not an http(s) link or a path starting with /' },
+    ]);
+  });
+
+  it('accepts root-relative image and url paths', () => {
+    const { items, errors } = parseCatalog(
+      'name,image,url\nJar,/images/chat/jar.webp,/#productos\nBad,//evil.test/x.png,',
+    );
+    expect(items.map((i) => i.image)).toEqual(['/images/chat/jar.webp']);
+    expect(errors).toEqual([
+      { row: 3, message: expect.stringMatching(/image "\/\/evil\.test\/x\.png"/) },
     ]);
   });
 

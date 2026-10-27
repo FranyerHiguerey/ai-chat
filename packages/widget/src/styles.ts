@@ -247,6 +247,7 @@ a { color: inherit; }
   list-style: none; margin: 0; padding: 2px 2px 6px; width: 100%;
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 72%);
   gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: thin;
+  overscroll-behavior: contain;
 }
 .items:has(> :only-child) { grid-auto-columns: minmax(200px, 100%); }
 .item {
@@ -254,10 +255,11 @@ a { color: inherit; }
   background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius);
 }
 .item__media {
-  aspect-ratio: 4 / 3; display: grid; place-items: center;
+  aspect-ratio: 1 / 1; display: grid; place-items: center; padding: 8px;
   background: var(--c-surface-2); color: var(--c-muted);
 }
-.item__media img { width: 100%; height: 100%; object-fit: cover; }
+/* Product renders have transparent padding and odd proportions: show them whole. */
+.item__media img { width: 100%; height: 100%; object-fit: contain; }
 .item__body { padding: 10px 12px 0; display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .item__name { margin: 0; font-weight: 600; }
 .item__text {

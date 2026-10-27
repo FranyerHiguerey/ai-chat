@@ -7,7 +7,7 @@ import type {
 } from '@franyerhiguerey/ai-chat-client';
 import type { Message, MessagePart, Starter } from '../types.js';
 import { textOf } from '../types.js';
-import { safeUrl } from '../markdown.js';
+import { resolveLink, safeUrl } from '../markdown.js';
 import type { UiStrings } from '../i18n.js';
 import { renderMarkdown } from '../markdown.js';
 import { h, srOnly } from './dom.js';
@@ -218,8 +218,8 @@ export function itemsCard(items: CardItem[], ctx: ViewContext): HTMLElement | un
     ...items.map((item) => {
       const media = h('div', { class: 'item__media', 'aria-hidden': 'true' });
       const fallback = () => media.replaceChildren(icon('package', 28));
-      const src = item.image && safeUrl(item.image);
-      if (src && /^https?:/.test(src)) {
+      const src = item.image && resolveLink(item.image);
+      if (src) {
         const img = h('img', {
           src,
           alt: '',
@@ -234,8 +234,8 @@ export function itemsCard(items: CardItem[], ctx: ViewContext): HTMLElement | un
       }
 
       const actions = h('div', { class: 'item__actions' });
-      const href = item.url && safeUrl(item.url);
-      if (href && /^https?:/.test(href)) {
+      const href = item.url && resolveLink(item.url);
+      if (href) {
         actions.append(
           h(
             'a',

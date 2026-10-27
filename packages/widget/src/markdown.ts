@@ -94,6 +94,25 @@ export function safeUrl(href: string): string | undefined {
   }
 }
 
+/**
+ * A link for a product card: an absolute http(s) URL, or a root-relative path
+ * (`/images/x.webp`) resolved against the page the widget is embedded in, so a
+ * catalog works the same in development and production. Anything else
+ * (protocol-relative `//host`, `javascript:`, `data:`...) is dropped.
+ */
+export function resolveLink(href: string): string | undefined {
+  if (/^\/(?![/\\])/.test(href)) {
+    try {
+      const url = new URL(href, globalThis.location?.href);
+      return /^https?:$/.test(url.protocol) ? url.href : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  const safe = safeUrl(href);
+  return safe && /^https?:/.test(safe) ? safe : undefined;
+}
+
 // One alternative per inline form; the first group that matched tells which.
 const INLINE =
   /`([^`\n]+)`|\*\*(?=\S)([^\n]*?\S)\*\*|\[([^\]\n]+)\]\(\s*([^)\s]+)\s*\)|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*])|\*(?=[^\s*])([^*\n]*?[^\s*])\*/g;

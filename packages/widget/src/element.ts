@@ -306,6 +306,13 @@ export class AiChatElement extends Base {
       const { scrollHeight, scrollTop, clientHeight } = ui.body;
       this.stick = scrollHeight - scrollTop - clientHeight < 32;
     });
+    // Pages with smooth scrolling (Lenis and the like) listen for wheel and touch
+    // on `window` and scroll the page themselves. Keep those events inside the
+    // panel so the conversation scrolls instead. Nothing is cancelled: native
+    // scrolling of the log, the cards and the input is untouched.
+    for (const type of ['wheel', 'touchmove'] as const) {
+      ui.panel.addEventListener(type, (event) => event.stopPropagation(), { passive: true });
+    }
     ui.panel.addEventListener('keydown', (event) => this.onPanelKey(event));
     ui.form.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -391,7 +398,11 @@ export class AiChatElement extends Base {
     const { panel } = this.ui;
     const html = document.documentElement;
     const overflow = html.style.overflow;
+    const bodyBehavior = document.body.style.overscrollBehavior;
     html.style.overflow = 'hidden';
+    // No rubber-banding of the page behind the full-screen chat.
+    html.style.overscrollBehavior = 'none';
+    document.body.style.overscrollBehavior = 'none';
     panel.setAttribute('aria-modal', 'true');
     const viewport = window.visualViewport;
     const fit = () => {
@@ -404,6 +415,8 @@ export class AiChatElement extends Base {
     fit();
     this.releaseOnClose.push(() => {
       html.style.overflow = overflow;
+      html.style.removeProperty('overscroll-behavior');
+      document.body.style.overscrollBehavior = bodyBehavior;
       panel.removeAttribute('aria-modal');
       viewport?.removeEventListener('resize', fit);
       viewport?.removeEventListener('scroll', fit);

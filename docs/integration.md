@@ -252,15 +252,15 @@ staticSource(async () => ({ settings, knowledge, catalog: await db.getProducts(s
 
 `folderSource` also reads a `catalog.json` from its folder.
 
-| Field                       | Notes                                                                           |
-| --------------------------- | ------------------------------------------------------------------------------- |
-| `id`                        | Unique, up to 80 characters                                                     |
-| `name`                      | Required                                                                        |
-| `description`               | Optional, shown on the card (2 lines)                                           |
-| `price`, `currency`, `unit` | Optional. Never shown on the card; the model may mention it in its answer       |
-| `url`, `image`              | Optional, http(s) only                                                          |
-| `tags`                      | Searchable labels, e.g. `["frascos", "alimentos"]`                              |
-| `attributes`                | Anything else to match on, e.g. `{ "capacidad": "250 ml", "material": "PEAD" }` |
+| Field                       | Notes                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| `id`                        | Unique, up to 80 characters                                                       |
+| `name`                      | Required                                                                          |
+| `description`               | Optional, shown on the card (2 lines)                                             |
+| `price`, `currency`, `unit` | Optional. Never shown on the card; the model may mention it in its answer         |
+| `url`, `image`              | Optional: an http(s) URL, or a path on your own site like `/images/chat/jar.webp` |
+| `tags`                      | Searchable labels, e.g. `["frascos", "alimentos"]`                                |
+| `attributes`                | Anything else to match on, e.g. `{ "capacidad": "250 ml", "material": "PEAD" }`   |
 
 **How it works.** When the visitor asks about products, the model calls `search_catalog` with a few keywords. The server matches them against names (strongest), tags, then descriptions and attributes, ignoring accents and plurals, and shows the top 4 as cards. The same items go back to the model, which answers from them in a second model call (it reads the cached prompt, like the lead form). No match means no card and an honest "we don't have that".
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 (2026-10-27)
+
+- **Widget:** on pages with smooth scrolling (Lenis and similar), wheel and touch events inside the open chat no longer reach the page, so the conversation scrolls instead of the page. On a phone the page behind the full-screen chat no longer rubber-bands.
+- **Catalog:** `image` and `url` can be a path on the site (`/images/chat/jar.webp`), resolved against the page that embeds the widget. Protocol-relative (`//host`) links are rejected.
+- **Widget:** product photos are shown whole in a square frame (`contain`) instead of cropped, which suits transparent product renders.
+
 ## 0.1.1 (2026-10-26)
 
 - **Fix:** installing from the GitHub release with pnpm 11 failed, because pnpm blocks sub-dependencies that resolve to URLs. `ai-chat-react` now takes the widget as a peer dependency, so installs need no overrides. Install the widget next to the React wrapper.

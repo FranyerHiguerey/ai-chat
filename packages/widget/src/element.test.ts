@@ -193,6 +193,69 @@ describe('<ai-chat>', () => {
     expect(text(el.shadowRoot?.querySelector('.starter'))).toBe('Early');
   });
 
+  describe('scroll priority', () => {
+    const wheel = (target: Element) =>
+      target.dispatchEvent(
+        new WheelEvent('wheel', { bubbles: true, composed: true, cancelable: true, deltaY: 120 }),
+      );
+
+    it('keeps wheel and touch events inside the open panel, so page smooth-scroll never sees them', () => {
+      const onWindow = vi.fn();
+      window.addEventListener('wheel', onWindow);
+      window.addEventListener('touchmove', onWindow);
+      const { $ } = mount({ open: '', lang: 'es' });
+
+      // Over the conversation, the header, and the composer.
+      for (const selector of ['.panel', '.header', 'textarea']) {
+        const target = $(selector);
+        const event = new WheelEvent('wheel', { bubbles: true, composed: true, cancelable: true });
+        target.dispatchEvent(event);
+        target.dispatchEvent(
+          new Event('touchmove', { bubbles: true, composed: true, cancelable: true }),
+        );
+        // Nothing is cancelled: the log still scrolls natively.
+        expect(event.defaultPrevented).toBe(false);
+      }
+      expect(onWindow).not.toHaveBeenCalled();
+      window.removeEventListener('wheel', onWindow);
+      window.removeEventListener('touchmove', onWindow);
+    });
+
+    it('does not touch scrolling while closed: events outside the panel reach the page', () => {
+      const onWindow = vi.fn();
+      window.addEventListener('wheel', onWindow);
+      const { el } = mount({ lang: 'es' });
+      wheel(el);
+      expect(onWindow).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).not.toBe(el);
+      window.removeEventListener('wheel', onWindow);
+    });
+
+    it('locks the page behind the full-screen chat on mobile and gives it back on close', () => {
+      const original = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: query.includes('639px'),
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      })) as unknown as typeof window.matchMedia;
+      try {
+        const { el } = mount({ lang: 'es' });
+        el.show();
+        const html = document.documentElement;
+        expect(html.style.overflow).toBe('hidden');
+        expect(html.style.overscrollBehavior).toBe('none');
+        expect(document.body.style.overscrollBehavior).toBe('none');
+        el.hide();
+        expect(html.style.overflow).toBe('');
+        expect(html.style.overscrollBehavior).toBe('');
+        expect(document.body.style.overscrollBehavior).toBe('');
+      } finally {
+        window.matchMedia = original;
+      }
+    });
+  });
+
   describe('remote-config', () => {
     const settings = (widget: unknown) => Response.json({ protocol: 1, widget });
 
@@ -324,6 +387,33 @@ describe('<ai-chat>', () => {
       expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body)).messages.at(-1).content).toBe(
         'Quiero cotizar Frasco PEAD 250 ml',
       );
+      // Let the reply finish: it is saved to sessionStorage, and must not leak into the next test.
+      await vi.waitFor(() => expect(root.querySelectorAll(ANSWERS)).toHaveLength(2));
+    });
+
+    it('resolves root-relative images against the page and drops links that leave the site', async () => {
+      (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(
+        'https://site.test/inicio',
+      );
+      const items = [
+        { id: 'a', name: 'Bidón', image: '/images/chat/bidon.webp', url: '/#productos' },
+        { id: 'b', name: 'Tapa', image: '//evil.test/x.png', url: '/\\evil.test' },
+      ];
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(rich(frame('card', { kind: 'items', items })));
+      const { el, root } = mount({ open: '', lang: 'es' }, fetch);
+      el.send('Bidones');
+      await vi.waitFor(() => expect(root.querySelectorAll('.item')).toHaveLength(2));
+      const [first, second] = [...root.querySelectorAll('.item')];
+      expect(first?.querySelector('img')?.getAttribute('src')).toBe(
+        'https://site.test/images/chat/bidon.webp',
+      );
+      expect(first?.querySelector<HTMLAnchorElement>('a')?.href).toBe(
+        'https://site.test/#productos',
+      );
+      expect(second?.querySelector('img')).toBeNull();
+      expect(second?.querySelector('a')).toBeNull();
     });
 
     it('falls back to the icon when a product image fails to load', async () => {
