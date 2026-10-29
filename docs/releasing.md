@@ -18,7 +18,7 @@ The workflow checks that the tag matches every package version, runs the full ga
 
 This needs no GitHub Actions, only an npm account.
 
-1. Once: `npm login` (opens the browser; the account must be `franyerhiguerey`, the name of the `@franyerhiguerey` scope). Turn on two-factor authentication on npmjs.com.
+1. Once: `pnpm login` (opens the browser; the account must be `franyerhiguerey`, the name of the `@franyerhiguerey` scope). Turn on two-factor authentication on npmjs.com.
 2. Bump the versions and the CHANGELOG as above, and commit.
 3. Run:
    ```bash
