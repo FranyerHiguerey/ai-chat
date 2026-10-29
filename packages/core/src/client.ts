@@ -6,6 +6,7 @@ import type { ServerEvent } from './protocol.js';
 import { createProvider } from './providers/index.js';
 import { catalogSchema, type CatalogItem, type CatalogItemInput } from './catalog.js';
 import { ConfigError } from './config.js';
+import { runCustomTool } from './custom-tool.js';
 import { runTool, TOOL_NOT_SHOWN, toolsFor, type ToolEvent } from './tools.js';
 import type {
   ChatMessage,
@@ -61,8 +62,12 @@ export interface ChatClient {
   stream(messages: ChatMessage[], options?: ChatStreamOptions): AsyncGenerator<ChatStreamEvent>;
 }
 
-/** Model calls per reply: one that calls tools, one that answers. */
+/**
+ * Model calls per reply: one that calls tools, one that answers. A site with
+ * its own tools gets one more, for chains like search, then calculate, then answer.
+ */
 const MAX_ROUNDS = 2;
+const MAX_ROUNDS_WITH_CUSTOM_TOOLS = 3;
 
 /** Sums the usage of a reply's rounds, so the reply is billed and logged once. */
 function addUsage(a: UsageReport, b: UsageReport): UsageReport {
@@ -140,6 +145,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
   const system = buildSystemPrompt(config, await resolveKnowledge(options), catalog.length);
   const maxTokens = config.limits.maxTokens;
   const tools = toolsFor(config, catalog.length);
+  const maxRounds = config.tools.length ? MAX_ROUNDS_WITH_CUSTOM_TOOLS : MAX_ROUNDS;
 
   /** No tools: there's no widget to show their results. */
   async function ask(messages: ChatMessage[], { lang }: AskOptions = {}): Promise<AskResult> {
@@ -156,7 +162,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
   /**
    * Streams a reply. Models call a tool and wait for its result before
    * answering, so a round that only called tools gets their results ("shown")
-   * and continues, up to MAX_ROUNDS model calls. A round that also wrote text
+   * and continues, up to maxRounds model calls. A round that also wrote text
    * is the answer. Tool events are held until the reply ends, so a refusal
    * drops them along with the text, and usage is reported once, summed.
    */
@@ -171,7 +177,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
     for (let round = 1; ; round++) {
       // The last round must answer: models otherwise end a reply on a tool call
       // (seen live with suggest_replies after a search), leaving no text.
-      const last = round === MAX_ROUNDS && rounds.length > 0;
+      const last = round === maxRounds && rounds.length > 0;
       const request = {
         system,
         messages,
@@ -187,6 +193,12 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
           wroteText ||= event.text.trim() !== '';
           yield { type: 'delta', text: event.text };
         } else if (event.type === 'tool_call') {
+          const custom = config.tools.find((tool) => tool.name === event.name);
+          if (custom) {
+            const output = await runCustomTool(custom, event, { catalog, signal });
+            calls.push({ id: event.id, output });
+            continue;
+          }
           // Each tool once per reply; unusable input is dropped and the reply still ends normally.
           const repeated = pending.some((held) => toolOf(held) === event.name);
           const outcome = repeated
@@ -203,7 +215,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
       usage = usage ? addUsage(usage, done.usage) : done.usage;
 
       const answerPending = calls.length > 0 && !wroteText && done.finishReason === 'stop';
-      if (answerPending && round < MAX_ROUNDS) {
+      if (answerPending && round < maxRounds) {
         rounds.push({
           replay: done.replay,
           results: calls,

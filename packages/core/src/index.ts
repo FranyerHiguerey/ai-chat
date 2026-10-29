@@ -37,6 +37,7 @@ export {
   type SourceData,
 } from './source.js';
 export { loadKnowledge, KnowledgeError, type KnowledgeDoc } from './knowledge.js';
+export { defineTool, type CustomTool, type CustomToolContext } from './custom-tool.js';
 export { buildSystemPrompt } from './prompt.js';
 export { createProvider } from './providers/index.js';
 export { ProviderError, type ProviderErrorCode } from './errors.js';

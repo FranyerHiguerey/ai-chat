@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { catalogResultText, searchCatalog, type CatalogItem } from './catalog.js';
 import type { ChatConfig } from './config.js';
+import { customToolSpec } from './custom-tool.js';
 import type { CardItem, HandoffChannel, ServerEvent } from './protocol.js';
 import type { ToolCall, ToolSpec } from './types.js';
 
@@ -86,11 +87,13 @@ export function toolsFor(config: ChatConfig, catalogSize = 0): ToolSpec[] {
   if (config.features.suggestions) tools.push(SUGGEST_REPLIES);
   if (handoffChannels(config, '').length > 0) tools.push(OFFER_HANDOFF);
   if (config.features.leadCapture) tools.push(SHOW_LEAD_FORM);
+  // The site's own tools go last, so the built-ins' cached prefix doesn't move.
+  for (const tool of config.tools) tools.push(customToolSpec(tool));
   return tools;
 }
 
 /** Prompt rules for the offered tools. Empty when there are none. */
-export function toolInstructions(tools: ToolSpec[]): string[] {
+export function toolInstructions(tools: ToolSpec[], config?: ChatConfig): string[] {
   if (tools.length === 0) return [];
   const offered = new Set(tools.map((tool) => tool.name));
   // Phrased the way models are trained to use functions: call, get the result,
@@ -116,6 +119,9 @@ export function toolInstructions(tools: ToolSpec[]): string[] {
     lines.push(
       '- When there is a natural next question, call suggest_replies in the same reply as your answer (not before it), with up to 3 short questions.',
     );
+  }
+  for (const tool of config?.tools ?? []) {
+    if (tool.instructions) lines.push(`- ${tool.name}: ${tool.instructions}`);
   }
   lines.push('- Call each tool at most once per reply.');
   lines.push(

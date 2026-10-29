@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 (2026-10-29)
+
+- **Core: custom tools.** `defineTool({ name, description, instructions?, parameters, run })` gives the model a server-side function, such as a price calculator or a stock lookup. Arguments are validated with Zod and sent to providers as strict JSON Schema; errors and timeouts (10 s) become a short result for the model and a server log line. Replies may take a third model call when a site has custom tools. See [Custom tools](docs/integration.md#custom-tools).
+- **Releases:** published to npm (`pnpm release:npm`); CI and a tag-driven release workflow are in the repo.
+
 ## 0.1.3 (2026-10-27)
 
 - **Fix (widget):** in 0.1.2, scrolling the mouse wheel over the product cards did nothing: the card row contained overscroll on both axes, which swallowed vertical wheel input. It now contains only the horizontal axis, so the conversation scrolls normally under the pointer. Found by testing the real site in Chrome with real smooth scrolling.

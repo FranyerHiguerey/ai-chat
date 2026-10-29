@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { customToolsSchema } from './custom-tool.js';
 import { catalogItemSchema } from './catalog.js';
 
 export const LANGUAGES = ['es', 'en'] as const;
@@ -153,6 +154,8 @@ export const configSchema = z.object({
     .default({}),
   /** Sites allowed to embed the chat. Empty: only the endpoint's own origin. */
   allowedOrigins: z.array(z.string().url()).default([]),
+  /** The site's own server-side tools (see defineTool). */
+  tools: customToolsSchema,
 });
 
 /** What a site writes in its `ai-chat.config.ts`. */

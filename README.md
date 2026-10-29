@@ -7,12 +7,13 @@ OpenAI.
 
 - **Answers from your content only**: markdown knowledge files, PDF/DOCX/HTML uploads, a CSV catalog.
 - **Rich replies**: product cards, reply chips, a WhatsApp/email handoff card and an inline lead form sent to your webhook (HMAC-signed).
+- **Your own tools**: give the model server-side functions (a price calculator, a stock lookup) with `defineTool`, so numbers come from code, not from the model.
 - **Safe to deploy**: same-origin by default, rate limits, size caps, a daily token budget and one JSON log line per request with no visitor text or raw IPs.
 - **Cheap to run**: the prompt is cached between requests, and the catalog stays out of it.
 - **Editable without code**: a site's own dashboard or CMS can feed settings, knowledge and catalog through a source.
 - **Works anywhere**: a web-standard `Request => Response` handler (Astro, Next.js, Hono, serverless), a zero-dependency `<ai-chat>` Web Component, and a React wrapper. Spanish and English.
 
-> **Status:** v0.1.3, pre-1.0, so the API can still change. In production at [hisiverplast.com](https://hisiverplast.com) ([case study](docs/case-study.md)). Not on npm yet: install from the [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) (below).
+> **Status:** v0.2.0, pre-1.0, so the API can still change. In production at [hisiverplast.com](https://hisiverplast.com) ([case study](docs/case-study.md)).
 
 ## Packages
 
@@ -24,21 +25,13 @@ OpenAI.
 | [`@franyerhiguerey/ai-chat-react`](packages/react)   | `<AiChat />` wrapper for React                                                            |
 | [`@franyerhiguerey/ai-chat-ingest`](packages/ingest) | Node: turns uploads (md, txt, HTML, PDF, DOCX) into knowledge and CSV/JSON into a catalog |
 
-## Install (from the GitHub release)
+## Install
 
-Until the npm release, add the packages you use straight from the release, plus your provider's SDK:
-
-```json
-{
-  "dependencies": {
-    "@franyerhiguerey/ai-chat-core": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.3/franyerhiguerey-ai-chat-core-0.1.3.tgz",
-    "@franyerhiguerey/ai-chat-widget": "https://github.com/FranyerHiguerey/ai-chat/releases/download/v0.1.3/franyerhiguerey-ai-chat-widget-0.1.3.tgz",
-    "openai": "^7.43.0"
-  }
-}
+```bash
+pnpm add @franyerhiguerey/ai-chat-core @franyerhiguerey/ai-chat-widget openai
 ```
 
-Use `@anthropic-ai/sdk` instead of `openai` for Claude. Add `ai-chat-react`, `ai-chat-client` or `ai-chat-ingest` the same way if you use them. The packages refer to each other only as peer dependencies, so nothing else is fetched and no overrides are needed. That matters for pnpm 11, which blocks URL sub-dependencies by default. The React wrapper needs the widget installed too.
+Use `@anthropic-ai/sdk` instead of `openai` for Claude. Add `ai-chat-react`, `ai-chat-client` or `ai-chat-ingest` if you use them; the React wrapper needs the widget installed too. The packages refer to each other only as peer dependencies, so each one also installs on its own from a [GitHub release](https://github.com/FranyerHiguerey/ai-chat/releases) tarball URL.
 
 ## Quick start
 

@@ -285,6 +285,37 @@ staticSource(async () => ({ settings, knowledge, catalog: await db.getProducts(s
 
 `examples/admin` has a Catalog page that does this, with [a sample file](../examples/admin/sample-catalog.csv) containing a bad row on purpose.
 
+### Custom tools
+
+Some answers need a calculation or a live lookup the model shouldn't do in its head: a price for a custom size, stock, a delivery date. Give the model your own function with `defineTool`:
+
+```ts
+import { defineConfig, defineTool } from '@franyerhiguerey/ai-chat-core';
+import { z } from 'zod';
+
+const quoteByWeight = defineTool({
+  name: 'quote_by_weight',
+  description: 'Unit price of a product made at a weight other than its standard one.',
+  instructions:
+    'Use it whenever the visitor asks for a heavier or lighter container. Never calculate prices yourself.',
+  parameters: z.object({ productId: z.string(), grams: z.number().positive() }),
+  run: ({ productId, grams }, { catalog }) => {
+    const item = catalog.find((product) => product.id === productId);
+    if (!item?.price) return 'Unknown product. Ask which one they mean.';
+    const standard = Number(item.attributes['peso (g)']);
+    return `${item.name} at ${grams} g: ${((item.price / standard) * grams).toFixed(2)} USD`;
+  },
+});
+
+export default defineConfig({ /* … */ tools: [quoteByWeight] });
+```
+
+- `run` gets the validated arguments and the catalog, may be `async`, and returns text for the model. Nothing is shown to the visitor directly: the model answers from the text.
+- Every field of `parameters` is required (OpenAI's strict mode); use `.nullable()` for optional ones.
+- Invalid arguments, a thrown error or a call that takes over 10 seconds become a short result telling the model to answer without the tool. The error message goes to the server log (`ai-chat.tool_error`), never to the visitor.
+- `instructions` is added to the prompt's tool rules. Names are snake_case and can't reuse a built-in tool's name.
+- With custom tools a reply may take three model calls instead of two (for example search the catalog, then calculate, then answer).
+
 ## 5. Visitor attachments (planned: M8)
 
 Visitors can attach images or PDFs, for example a spec sheet or a photo for a quote.

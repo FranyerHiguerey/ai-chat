@@ -23,7 +23,7 @@ function instructions(config: ChatConfig, catalogSize: number): string {
   if (languages.tone) {
     lines.push(`- Tone: ${languages.tone}`);
   }
-  lines.push(...toolInstructions(toolsFor(config, catalogSize)));
+  lines.push(...toolInstructions(toolsFor(config, catalogSize), config));
   return lines.join('\n');
 }
 

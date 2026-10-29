@@ -6,7 +6,7 @@ A release is a tag. [release.yml](../.github/workflows/release.yml) does the res
 
 1. Bump `version` in all five `packages/*/package.json` to the same number.
 2. Add a `## x.y.z (date)` section at the top of `CHANGELOG.md`. It becomes the release notes.
-3. Update the version in the README's install snippet.
+3. Update the version in the README's status line.
 4. Commit, then tag and push:
    ```bash
    git tag v0.2.0 && git push origin main v0.2.0
