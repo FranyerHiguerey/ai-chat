@@ -13,7 +13,7 @@ OpenAI.
 - **Editable without code**: a site's own dashboard or CMS can feed settings, knowledge and catalog through a source.
 - **Works anywhere**: a web-standard `Request => Response` handler (Astro, Next.js, Hono, serverless), a zero-dependency `<ai-chat>` Web Component, and a React wrapper. Spanish and English.
 
-> **Status:** v0.2.0, pre-1.0, so the API can still change. In production at [hisiverplast.com](https://hisiverplast.com) ([case study](docs/case-study.md)).
+> **Status:** v0.3.0, pre-1.0, so the API can still change. In production at [hisiverplast.com](https://hisiverplast.com) ([case study](docs/case-study.md)).
 
 ## Packages
 

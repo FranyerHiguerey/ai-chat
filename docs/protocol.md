@@ -23,6 +23,7 @@ Accept: text/event-stream
 
 - `messages`: the whole conversation as plain text. It starts and ends with `user` and alternates roles. The server is stateless, so the client keeps the history and sends it every turn.
 - `lang` (optional, `"es"` or `"en"`): the UI language. Fixed replies and error messages use it. The model replies in whatever language the visitor writes in. An unsupported value falls back to the site's default language.
+- `context` (optional, any JSON): data for the site's own tools, such as the state of the page the visitor is looking at. It is read only when the server sets a `contextSchema` (see [Custom tools](integration.md#custom-tools)); otherwise it is ignored. A context that fails the schema is a 400 `invalid_request`. It is never put in the system prompt: the model sees it only through what a tool returns.
 
 Limits come from the site config (`limits`): characters per message (default 2,000) and per conversation (20,000), user turns per conversation (20), and body size (100 KB).
 
@@ -32,17 +33,18 @@ Limits come from the site config (`limits`): characters per message (default 2,0
 
 Rejected requests never reach the model, so they cost nothing. They return JSON, not a stream:
 
-| Status | `error.code`         | Meaning                                                                                           |
-| ------ | -------------------- | ------------------------------------------------------------------------------------------------- |
-| 400    | `invalid_request`    | Not JSON, wrong shape, roles don't alternate, or an empty message                                 |
-| 400    | `message_too_long`   | A message is over `limits.maxMessageChars`, or all messages together over `maxConversationChars`  |
-| 400    | `too_many_turns`     | More than `limits.maxTurns` user turns: start a new conversation                                  |
-| 403    | `forbidden_origin`   | The page's `Origin` is not the endpoint's own and not in `allowedOrigins`                         |
-| 405    | `method_not_allowed` | Not a GET or POST                                                                                 |
-| 413    | `message_too_long`   | The body is over `limits.maxBodyBytes`                                                            |
-| 429    | `rate_limited`       | Too many requests from this visitor or from everyone. `Retry-After` says how many seconds to wait |
-| 500    | `internal`           | The server is misconfigured (for example, the knowledge folder is missing)                        |
-| 503    | `unavailable`        | The site's daily token budget is spent. New chats work again the next UTC day                     |
+| Status  | `error.code`         | Meaning                                                                                                                                             |
+| ------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400     | `invalid_request`    | Not JSON, wrong shape, roles don't alternate, or an empty message                                                                                   |
+| 400     | `message_too_long`   | A message is over `limits.maxMessageChars`, or all messages together over `maxConversationChars`                                                    |
+| 400     | `too_many_turns`     | More than `limits.maxTurns` user turns: start a new conversation                                                                                    |
+| 401/403 | `unauthorized`       | The server's `authorize` hook said no (for example a missing or wrong token). Sent in the site's default language, because the body is not read yet |
+| 403     | `forbidden_origin`   | The page's `Origin` is not the endpoint's own and not in `allowedOrigins`                                                                           |
+| 405     | `method_not_allowed` | Not a GET or POST                                                                                                                                   |
+| 413     | `message_too_long`   | The body is over `limits.maxBodyBytes`                                                                                                              |
+| 429     | `rate_limited`       | Too many requests from this visitor or from everyone. `Retry-After` says how many seconds to wait                                                   |
+| 500     | `internal`           | The server is misconfigured (for example, the knowledge folder is missing)                                                                          |
+| 503     | `unavailable`        | The site's daily token budget is spent. New chats work again the next UTC day                                                                       |
 
 `forbidden_origin` and the 400s are final: retrying the same request won't help. `rate_limited` and `unavailable` are temporary.
 

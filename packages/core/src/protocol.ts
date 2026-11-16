@@ -20,6 +20,7 @@ export type RequestErrorCode =
   | 'too_many_turns'
   | 'method_not_allowed'
   | 'forbidden_origin'
+  | 'unauthorized'
   | 'rate_limited'
   | 'unavailable'
   | 'lead_failed';
@@ -28,6 +29,8 @@ export interface ChatRequestBody {
   messages: ChatMessage[];
   /** UI language; fixed replies and error messages follow it. */
   lang?: Language;
+  /** Data for the site's own tools. Only read when the server sets a `contextSchema`; ignored otherwise. */
+  context?: unknown;
 }
 
 /** A way to reach a person, built by the server from the site's config. */

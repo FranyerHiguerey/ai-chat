@@ -314,7 +314,35 @@ export default defineConfig({ /* … */ tools: [quoteByWeight] });
 - Every field of `parameters` is required (OpenAI's strict mode); use `.nullable()` for optional ones.
 - Invalid arguments, a thrown error or a call that takes over 10 seconds become a short result telling the model to answer without the tool. The error message goes to the server log (`ai-chat.tool_error`), never to the visitor.
 - `instructions` is added to the prompt's tool rules. Names are snake_case and can't reuse a built-in tool's name.
-- With custom tools a reply may take three model calls instead of two (for example search the catalog, then calculate, then answer).
+- With custom tools a reply may take three model calls instead of two (for example search the catalog, then calculate, then answer). Set `limits.maxToolRounds` (1 to 8) for longer chains; the last call is always forced to answer.
+- Your own tools may be called more than once per reply; the built-in ones still run once.
+- A tool result is cut at 4,000 characters before the model reads it; raise `limits.maxToolOutputChars` (up to 20,000) for tools that return structured data, since a cut JSON is useless.
+
+#### Request context
+
+A tool often needs data that belongs to the request, not the conversation: the state of a form, a game, a cart. Send it as `context` in the body and give the handler a Zod schema; tools read the validated value as `ctx.request`.
+
+```ts
+const draft = z.object({ map: z.string(), rank: z.number().int() });
+
+const handler = createChatHandler({
+  config, env,
+  contextSchema: draft,
+});
+
+// in a tool:
+run: (input, ctx) => describe(ctx.request as z.infer<typeof draft>),
+```
+
+The model never receives the context directly, so the cached prompt prefix is untouched, and the model cannot copy a number wrong: the tool uses the value as sent.
+
+#### Own system prompt
+
+`config.systemPrompt` replaces the built-in "website assistant" instructions, for assistants that are not a company's site chat. The tone and the tool rules are still appended. It must be the same text on every request. It is deploy config: a dashboard source cannot set it.
+
+#### Access control
+
+`createChatHandler({ authorize })` receives the `Request` and returns `{ ok: true }` or `{ ok: false, status?: 401 | 403 }`. It runs after the origin and rate-limit checks, so guessing tokens is throttled, and before the body is read or the model is called. A hook that throws is a 500, never access. There are no built-in accounts: the hook decides, for example by looking a bearer token up in your own store.
 
 ## 5. Visitor attachments (planned: M8)
 

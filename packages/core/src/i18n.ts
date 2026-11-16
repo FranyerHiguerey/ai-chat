@@ -23,6 +23,7 @@ export const STRINGS: Record<Language, Strings> = {
       too_many_turns: 'Esta conversación es muy larga. Empieza una nueva para seguir.',
       method_not_allowed: 'Método no permitido.',
       forbidden_origin: 'Este chat no está disponible en este sitio.',
+      unauthorized: 'No tienes acceso a este chat.',
       rate_limited:
         'Estás enviando mensajes muy rápido. Espera unos segundos e inténtalo de nuevo.',
       unavailable: 'El asistente no está disponible por hoy. Contáctanos directamente.',
@@ -43,6 +44,7 @@ export const STRINGS: Record<Language, Strings> = {
       too_many_turns: 'This conversation is very long. Start a new one to continue.',
       method_not_allowed: 'Method not allowed.',
       forbidden_origin: 'This chat is not available on this site.',
+      unauthorized: "You don't have access to this chat.",
       rate_limited: "You're sending messages very fast. Wait a few seconds and try again.",
       unavailable:
         'The assistant is not available for the rest of the day. Please contact us directly.',

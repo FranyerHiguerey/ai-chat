@@ -7,11 +7,14 @@ const bodySchema = z.object({
   messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).min(1),
   // Unknown languages fall back to the site default instead of failing.
   lang: z.enum(LANGUAGES).optional().catch(undefined),
+  // Checked by the handler against the site's `contextSchema`, if it has one.
+  context: z.unknown().optional(),
 });
 
 export interface ParsedChatRequest {
   messages: ChatMessage[];
   lang?: Language;
+  context?: unknown;
 }
 
 export type ParseResult =
@@ -25,7 +28,7 @@ export function parseChatRequest(body: unknown, config: ChatConfig): ParseResult
   const result = bodySchema.safeParse(body);
   if (!result.success) return { ok: false, code: 'invalid_request' };
 
-  const { messages, lang } = result.data;
+  const { messages, lang, context } = result.data;
   const fail = (code: RequestErrorCode): ParseResult => ({ ok: false, code, lang });
 
   // user, assistant, user, ... ending with the visitor's new message.
@@ -39,5 +42,5 @@ export function parseChatRequest(body: unknown, config: ChatConfig): ParseResult
   if (total > config.limits.maxConversationChars) return fail('message_too_long');
   if ((messages.length + 1) / 2 > config.limits.maxTurns) return fail('too_many_turns');
 
-  return { ok: true, value: { messages, lang } };
+  return { ok: true, value: { messages, lang, context } };
 }

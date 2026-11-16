@@ -9,7 +9,7 @@ A release is a tag. [release.yml](../.github/workflows/release.yml) does the res
 3. Update the version in the README's status line.
 4. Commit, then tag and push:
    ```bash
-   git tag v0.2.0 && git push origin main v0.2.0
+   git tag v0.3.0 && git push origin main v0.3.0
    ```
 
 The workflow checks that the tag matches every package version, runs the full gate again, creates the GitHub release with the five tarballs and, when the `NPM_TOKEN` secret exists, publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements). Versions already on npm are skipped, so re-running a failed release is safe.
@@ -25,7 +25,7 @@ This needs no GitHub Actions, only an npm account.
    pnpm release:npm
    ```
    It installs, runs the full gate (Prettier, build, typecheck, lint, tests) and only then publishes the five packages. With two-factor on, npm asks for a code or opens the browser. Versions already on npm are skipped.
-4. Tag the commit and push it: `git tag v0.2.0 && git push origin main v0.2.0`.
+4. Tag the commit and push it: `git tag v0.3.0 && git push origin main v0.3.0`.
 
 Packages published this way have no [provenance](https://docs.npmjs.com/generating-provenance-statements) statement: npm only creates it inside CI.
 

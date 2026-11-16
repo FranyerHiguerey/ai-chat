@@ -14,6 +14,11 @@ export interface CustomToolContext {
   catalog: CatalogItem[];
   /** Aborted when the visitor leaves or the tool times out. */
   signal: AbortSignal;
+  /**
+   * What the request carried besides the messages: the `context` field of the body, validated by the handler's
+   * `contextSchema`. `undefined` when the site sets none or the request sent none. Cast it to your schema's type.
+   */
+  request: unknown;
 }
 
 export interface CustomTool<T extends z.AnyZodObject = z.AnyZodObject> {
@@ -93,7 +98,8 @@ export function customToolSpec(tool: CustomTool): ToolSpec {
 
 /** A tool that hangs must not hold the reply open. */
 export const CUSTOM_TOOL_TIMEOUT_MS = 10_000;
-const MAX_OUTPUT_CHARS = 4_000;
+/** Default cap on a tool's result; `limits.maxToolOutputChars` raises it. */
+export const DEFAULT_MAX_OUTPUT_CHARS = 4_000;
 
 /**
  * Runs a custom tool call. Bad arguments, a thrown error or a timeout become
@@ -103,7 +109,12 @@ const MAX_OUTPUT_CHARS = 4_000;
 export async function runCustomTool(
   tool: CustomTool,
   call: ToolCall,
-  ctx: { catalog: CatalogItem[]; signal?: AbortSignal },
+  ctx: {
+    catalog: CatalogItem[];
+    signal?: AbortSignal;
+    request?: unknown;
+    maxOutputChars?: number;
+  },
 ): Promise<string> {
   const input = tool.parameters.safeParse(call.input);
   if (!input.success) {
@@ -113,13 +124,14 @@ export async function runCustomTool(
   const signal = ctx.signal ? AbortSignal.any([ctx.signal, timeout]) : timeout;
   try {
     const output = await Promise.race([
-      Promise.resolve(tool.run(input.data, { catalog: ctx.catalog, signal })),
+      Promise.resolve(tool.run(input.data, { catalog: ctx.catalog, signal, request: ctx.request })),
       new Promise<never>((_, reject) => {
         signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true });
       }),
     ]);
     const text = String(output).trim() || 'No result.';
-    return text.length > MAX_OUTPUT_CHARS ? `${text.slice(0, MAX_OUTPUT_CHARS - 1)}…` : text;
+    const max = ctx.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
   } catch (error) {
     console.error(
       JSON.stringify({

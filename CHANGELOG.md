@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 (2026-11-15)
+
+Everything below is optional: a site that uses none of it behaves as in 0.2.0.
+
+- **Core: `config.systemPrompt`** replaces the built-in website-assistant instructions, for assistants that are not a site chat. Tone and tool rules are still appended.
+- **Core: request context.** The body may carry `context`; with `createChatHandler({ contextSchema })` it is validated and reaches custom tools as `ctx.request`. It never enters the prompt.
+- **Core: `limits.maxToolOutputChars`** raises the 4,000-character cap on a custom tool's result (up to 20,000), for tools that return structured data.
+- **Core: `limits.maxToolRounds`** (1 to 8) sets the model calls per reply instead of the fixed 2 or 3. With custom tools, the prompt now says that only built-in tools are limited to one call per reply.
+- **Core: `authorize` hook** on the handler, with a new `unauthorized` request error (401 or 403).
+
 ## 0.2.0 (2026-10-29)
 
 - **Core: custom tools.** `defineTool({ name, description, instructions?, parameters, run })` gives the model a server-side function, such as a price calculator or a stock lookup. Arguments are validated with Zod and sent to providers as strict JSON Schema; errors and timeouts (10 s) become a short result for the model and a server log line. Replies may take a third model call when a site has custom tools. See [Custom tools](docs/integration.md#custom-tools).

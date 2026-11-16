@@ -1,3 +1,4 @@
+import type { z } from 'zod';
 import { createBuilder, type Build } from './build.js';
 import type { ChatClientOptions } from './client.js';
 import { ConfigError } from './config.js';
@@ -40,7 +41,19 @@ export interface ChatHandlerOptions extends ChatClientOptions {
   source?: ChatSource;
   /** Replaces `fetch` for lead webhook calls (tests). */
   webhookFetch?: typeof fetch;
+  /**
+   * Validates the `context` field of the request body. What it returns reaches custom tools as `ctx.request`; a
+   * context that fails is a 400. Without it, `context` is ignored. To make it optional, use `.optional()`.
+   */
+  contextSchema?: z.ZodType<unknown, z.ZodTypeDef, unknown>;
+  /**
+   * Decides who may chat, e.g. by a token in a header. Runs after the origin and rate-limit checks (so guessing
+   * tokens is throttled) and before the body is read or the model is called. A thrown error is a 500, never access.
+   */
+  authorize?: (request: Request) => AuthDecision | Promise<AuthDecision>;
 }
+
+export type AuthDecision = { ok: true } | { ok: false; status?: 401 | 403 };
 
 export type ChatHandler = (request: Request, context?: RequestContext) => Promise<Response>;
 
@@ -168,6 +181,25 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
     // every early return must free it here.
     let streaming = false;
     try {
+      if (options.authorize) {
+        let decision: AuthDecision;
+        try {
+          decision = await options.authorize(request);
+        } catch (error) {
+          logError('authorize', error);
+          log({ outcome: 'error', status: 500, code: 'internal' });
+          return Response.json(
+            {
+              error: {
+                code: 'internal',
+                message: stringsFor(undefined, builder.config).streamErrors.internal,
+              },
+            },
+            { status: 500, headers: cors },
+          );
+        }
+        if (!decision.ok) return reject(decision.status ?? 401, 'unauthorized');
+      }
       const body = await readJsonBody(request, limits.maxBodyBytes);
       if (!body.ok) {
         return body.reason === 'too_large'
@@ -190,6 +222,13 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
       if (!parsed.ok) return reject(400, parsed.code, parsed.lang);
       const { messages, lang } = parsed.value;
       entry.lang = lang ?? null;
+
+      let context: unknown;
+      if (options.contextSchema) {
+        const checked = options.contextSchema.safeParse(parsed.value.context);
+        if (!checked.success) return reject(400, 'invalid_request', lang);
+        context = checked.data;
+      }
 
       if (await budget.exhausted()) {
         logger({ event: 'ai-chat.error', stage: 'budget', message: 'Daily token budget reached' });
@@ -214,7 +253,17 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
       }
 
       streaming = true;
-      return streamReply({ request, build, messages, lang, id, cors, release: slot.release, log });
+      return streamReply({
+        request,
+        build,
+        messages,
+        lang,
+        context,
+        id,
+        cors,
+        release: slot.release,
+        log,
+      });
     } finally {
       if (!streaming) slot.release();
     }
@@ -278,12 +327,13 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
     build: Build;
     messages: ChatMessage[];
     lang?: string;
+    context?: unknown;
     id: string;
     cors: Record<string, string>;
     release: () => void;
     log: (changes: Partial<RequestLogEntry>) => void;
   }): Response {
-    const { request, build, messages, lang, id, release, log } = reply;
+    const { request, build, messages, lang, context, id, release, log } = reply;
     const { chat } = build;
     const strings = stringsFor(lang, build.config);
 
@@ -327,6 +377,7 @@ export function createChatHandler(options: ChatHandlerOptions): ChatHandler {
           try {
             for await (const event of chat.stream(messages, {
               lang,
+              context,
               signal: abort.signal,
               onUsage,
             })) {

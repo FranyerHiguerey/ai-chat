@@ -112,6 +112,12 @@ export const siteSettingsSchema = z.object({
 
 export const configSchema = z.object({
   company: companySchema,
+  /**
+   * Replaces the built-in "website assistant" instructions: who the assistant is and how it answers. The tone and the
+   * tool rules are still appended. Deploy config only, so a dashboard cannot change it. It must not change between
+   * requests, or the cached prompt prefix stops hitting.
+   */
+  systemPrompt: z.string().trim().min(1).max(20_000).optional(),
   /** Folder of `.md` files. Optional when a source supplies the knowledge. */
   knowledgeDir: z.string().min(1).optional(),
   /** Products the assistant can search and show as cards. A source's catalog replaces it. */
@@ -144,6 +150,13 @@ export const configSchema = z.object({
       rpmGlobal: z.number().int().positive().default(60),
       maxConcurrentPerIp: z.number().int().positive().default(2),
       maxTokens: z.number().int().positive().default(1024),
+      /**
+       * Model calls per reply, the last one forced to answer. Default: 2, or 3 when the site has custom tools. Raise it
+       * for chains of tools (look up, compare, then answer).
+       */
+      maxToolRounds: z.number().int().min(1).max(8).optional(),
+      /** A custom tool's result is cut at this many characters before the model reads it. Default 4,000. */
+      maxToolOutputChars: z.number().int().min(500).max(20_000).optional(),
       /** Weighted tokens per UTC day across all visitors (see weightedTokens). 0 turns it off. */
       dailyTokenBudget: z.number().int().nonnegative().default(1_000_000),
       /** All knowledge documents together. Every request sends them, so this bounds its cost. */

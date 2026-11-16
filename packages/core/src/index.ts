@@ -53,6 +53,7 @@ export {
 } from './client.js';
 export {
   createChatHandler,
+  type AuthDecision,
   type ChatHandler,
   type ChatHandlerOptions,
   type RequestContext,

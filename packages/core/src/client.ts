@@ -32,6 +32,8 @@ export interface AskOptions {
 }
 
 export interface ChatStreamOptions extends AskOptions, StreamOptions {
+  /** Request data for custom tools (`ctx.request`). It never reaches the model except through what a tool returns. */
+  context?: unknown;
   /** Called with this reply's usage, after the client-wide `onUsage`. */
   onUsage?: (usage: UsageReport) => void;
 }
@@ -145,7 +147,9 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
   const system = buildSystemPrompt(config, await resolveKnowledge(options), catalog.length);
   const maxTokens = config.limits.maxTokens;
   const tools = toolsFor(config, catalog.length);
-  const maxRounds = config.tools.length ? MAX_ROUNDS_WITH_CUSTOM_TOOLS : MAX_ROUNDS;
+  const maxRounds =
+    config.limits.maxToolRounds ??
+    (config.tools.length ? MAX_ROUNDS_WITH_CUSTOM_TOOLS : MAX_ROUNDS);
 
   /** No tools: there's no widget to show their results. */
   async function ask(messages: ChatMessage[], { lang }: AskOptions = {}): Promise<AskResult> {
@@ -168,7 +172,7 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
    */
   async function* stream(
     messages: ChatMessage[],
-    { lang, signal, onUsage: onReplyUsage }: ChatStreamOptions = {},
+    { lang, signal, context, onUsage: onReplyUsage }: ChatStreamOptions = {},
   ): AsyncGenerator<ChatStreamEvent> {
     const pending: ToolEvent[] = [];
     const rounds: ToolRound[] = [];
@@ -195,7 +199,12 @@ export async function createChatClient(options: ChatClientOptions): Promise<Chat
         } else if (event.type === 'tool_call') {
           const custom = config.tools.find((tool) => tool.name === event.name);
           if (custom) {
-            const output = await runCustomTool(custom, event, { catalog, signal });
+            const output = await runCustomTool(custom, event, {
+              catalog,
+              signal,
+              request: context,
+              maxOutputChars: config.limits.maxToolOutputChars,
+            });
             calls.push({ id: event.id, output });
             continue;
           }

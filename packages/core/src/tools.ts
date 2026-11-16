@@ -123,7 +123,11 @@ export function toolInstructions(tools: ToolSpec[], config?: ChatConfig): string
   for (const tool of config?.tools ?? []) {
     if (tool.instructions) lines.push(`- ${tool.name}: ${tool.instructions}`);
   }
-  lines.push('- Call each tool at most once per reply.');
+  lines.push(
+    config?.tools.length
+      ? '- Call each built-in tool at most once per reply. Your own tools may be called as often as the question needs.'
+      : '- Call each tool at most once per reply.',
+  );
   lines.push(
     '- Never tell the visitor to fill in a form or press a button unless you called the tool that shows it.',
   );
